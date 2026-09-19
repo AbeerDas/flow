@@ -20,10 +20,26 @@ from flow.registry import Entry, Registry, Reversibility, Tier
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# The gateway and the model's own endpoint speak the same fields at different
-# addresses, so the address is configuration rather than a branch in the code.
-GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/evaluate"
-DEFAULT_MODEL = "typesafe-ai/jev"
+# Three routes to the same model, speaking the same state and questions at
+# different addresses, so the route is configuration rather than a branch.
+PROFILES = {
+    "vercel": {
+        "url": "https://ai-gateway.vercel.sh/v1/evaluate",
+        "model": "typesafe-ai/jev",
+        "key": "AI_GATEWAY_API_KEY",
+    },
+    "openrouter": {
+        "url": "https://openrouter.ai/api/alpha/decisions",
+        "model": "typesafe/jev-latest",
+        "key": "OPENROUTER_API_KEY",
+    },
+    "typesafe": {
+        "url": "https://api.typesafe.ai/v1/systemone",
+        "model": "jev-latest",
+        "key": "TYPESAFE_API_KEY",
+    },
+}
+DEFAULT_PROFILE = "vercel"
 
 
 def load_env() -> None:
@@ -77,14 +93,19 @@ class Engine(Protocol):
 class HostedEngine:
     """The hosted decision model, reached directly or through a gateway."""
 
-    def __init__(self, url: str | None = None, model: str | None = None, key: str | None = None):
+    def __init__(self, profile: str | None = None, url=None, model=None, key=None):
         load_env()
-        self.url = url or os.environ.get("FLOW_DECIDE_URL", GATEWAY_URL)
-        self.model = model or os.environ.get("FLOW_DECIDE_MODEL", DEFAULT_MODEL)
-        self.key = key or os.environ.get("AI_GATEWAY_API_KEY") or os.environ.get("TYPESAFE_API_KEY")
+        name = profile or os.environ.get("FLOW_PROFILE", DEFAULT_PROFILE)
+        if name not in PROFILES:
+            raise RuntimeError(f"unknown profile {name!r}, pick one of {', '.join(PROFILES)}")
+        chosen = PROFILES[name]
+        self.profile = name
+        self.url = url or os.environ.get("FLOW_DECIDE_URL", chosen["url"])
+        self.model = model or os.environ.get("FLOW_DECIDE_MODEL", chosen["model"])
+        self.key = key or os.environ.get(chosen["key"])
         if not self.key:
             raise RuntimeError(
-                "No key found. Put AI_GATEWAY_API_KEY in .env.local, see .env.example."
+                f"No key for the {name} route. Put {chosen['key']} in .env.local, see .env.example."
             )
 
     def ask(self, state: dict, questions: dict) -> Decision:
