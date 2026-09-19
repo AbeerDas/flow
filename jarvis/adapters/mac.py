@@ -31,6 +31,22 @@ OPERATIONS = {
     "PRESS_ESCAPE": Verb.PRESS_ESCAPE,
 }
 
+# An element reporting an operation is not the same as that operation being a
+# thing a person would do. Static text accepts a click and is still text, and a
+# container accepts a press and is still a container. Measured on one window,
+# these two pairs were 45% of everything offered.
+NOISE = {
+    ("AXStaticText", "CLICK"),
+    ("AXStaticText", "PRESS"),
+    ("AXGroup", "PRESS"),
+    ("AXGroup", "CLICK"),
+    ("AXSplitter", "PRESS"),
+    ("AXImage", "CLICK"),
+    ("AXScrollArea", "PRESS"),
+    ("AXUnknown", "PRESS"),
+    ("AXUnknown", "CLICK"),
+}
+
 DEEP_LIMIT = 250
 
 
@@ -103,6 +119,8 @@ class MacAdapter:
         try:
             page = self.bridge.call("snapshot", app=app, menus=True, limit=self.deep_limit)
         except BridgeError:
+            # A covered window stops drawing and answers with nothing, so the
+            # only thing offered for that app is reaching it.
             return self._shallow(app)
         page["observed_at"] = time.time()
         self._pages[app] = page
@@ -111,9 +129,10 @@ class MacAdapter:
         for element in page.get("elements", []):
             if not element.get("enabled", True):
                 continue
+            role = element.get("role", "")
             for operation in element.get("operations", []):
                 verb = OPERATIONS.get(operation)
-                if verb is None:
+                if verb is None or (role, operation) in NOISE:
                     continue
                 entries.append(
                     Entry(
