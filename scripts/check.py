@@ -42,9 +42,11 @@ except RuntimeError as error:
     print(f"\nnot usable yet\n{message[:200]}")
     if "credit card" in message:
         print(
-            "\nThe key is valid and the credits are there. Gateway keys belong to one\n"
-            "Vercel team, so the card has to be on that same team. Check the team\n"
-            "switcher on the AI Gateway page against the team the key was made in."
+            "\nThe key is fine. This is the account, and no key will fix it.\n"
+            "A spend budget on the key page is a cap, not a payment method, and\n"
+            "setting one does not satisfy this. The card goes on the account:\n"
+            "  https://vercel.com/d?to=%2F%5Bteam%5D%2F~%2Fai%3Fmodal%3Dadd-credit-card\n"
+            "Or switch routes, FLOW_PROFILE=openrouter in .env.local."
         )
     sys.exit(1)
 
