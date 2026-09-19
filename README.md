@@ -53,14 +53,26 @@ the browser, work tools and Claude Code adapters.
 
 ## Running it
 
-Grant accessibility permission to whatever runs the shell, under System Settings
-then Privacy and Security then Accessibility. Then
+Accessibility permission goes to the application that owns your shell, not to
+the shell. Running from Terminal means ticking Terminal. Running inside another
+app's built-in terminal means ticking that app, which is easy to get wrong and
+gives no error worth reading.
+
+To check which one that is
+
+```bash
+ps -o comm= -p $(ps -o ppid= -p $PPID)
+```
+
+Tick it under System Settings, then Privacy and Security, then Accessibility.
+Then quit that application fully and reopen it, because the switch does not
+reach a process that is already running.
 
 ```bash
 python3 scripts/scan.py
 ```
 
-which prints what your machine can currently do.
+prints what your machine can currently do.
 
 ## Layout
 
