@@ -13,12 +13,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from flow.adapters.mac import MacAdapter
-from flow.decide import HostedEngine, app_question, questions_for, state_for
+from flow.decide import engine as make_engine, questions_for, state_for
 from flow.registry import Registry, Reversibility, Tier
-
-# Past this many candidates the list is narrowed to one app first. The hosted
-# model holds far more than this; a local one does not.
-NARROW_ABOVE = 60
 
 args = [a for a in sys.argv[1:] if a != "--go"]
 commit = "--go" in sys.argv
@@ -27,7 +23,7 @@ if not args:
 goal = " ".join(args)
 
 adapter = MacAdapter()
-engine = HostedEngine()
+engine = make_engine()
 registry = Registry()
 
 started = time.time()
@@ -37,14 +33,12 @@ for app in adapter.apps():
     registry.replace(adapter.name, name, adapter.scan(name, Tier.DEEP if name == front else Tier.SHALLOW))
 read_ms = (time.time() - started) * 1000
 
+# Narrowing by app first cost more than it bought. Asking a small model which
+# of sixteen apps a goal is about puts the right answer out of reach whenever it
+# guesses wrong, and the word shortlist already spans every app.
 candidates = registry.entries
-narrowed_to = None
-if len(candidates) > NARROW_ABOVE:
-    first = engine.ask(state_for(registry, candidates, front), app_question(goal, registry.apps()))
-    narrowed_to = first.answers["app"].choice
-    scoped = registry.narrow(app=narrowed_to)
-    if scoped:
-        candidates = scoped
+if len(candidates) > engine.max_options:
+    candidates = registry.shortlist(goal, candidates, engine.max_options)
 
 decision = engine.ask(state_for(registry, candidates, front), questions_for(goal, candidates))
 action = decision.answers["action"]
@@ -53,9 +47,9 @@ chosen = next((e for e in candidates if str(e.index) == action.choice), None)
 
 print(f'goal        "{goal}"')
 print(f"read        {read_ms:.0f} ms, {len(registry.entries)} entries across {len(registry.apps())} apps")
-if narrowed_to:
-    print(f"narrowed    {narrowed_to}, {len(candidates)} candidates")
-print(f"decided     {decision.latency_ms} ms")
+if len(candidates) < len(registry.entries):
+    print(f"shortlist   {len(candidates)} candidates from {len(registry.entries)}")
+print(f"decided     {decision.latency_ms} ms on the {engine.profile} route")
 if addressed:
     print(f"a command   {addressed.probabilities.get('true', 0):.2f}")
 if chosen is None:

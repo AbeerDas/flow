@@ -94,6 +94,13 @@ def reversibility_of(verb: Verb, app: str) -> Reversibility:
     return floor
 
 
+STOPWORDS = {"the", "a", "an", "to", "in", "on", "my", "me", "please", "and", "of", "for", "it"}
+
+
+def _words(text: str) -> list[str]:
+    return [w for w in "".join(c.lower() if c.isalnum() else " " for c in text).split() if w]
+
+
 @dataclass(frozen=True)
 class Entry:
     """One thing that can be done, right now."""
@@ -146,6 +153,31 @@ class Registry:
         if tier is not None:
             out = [e for e in out if e.tier is tier]
         return out
+
+    def shortlist(self, goal: str, entries: list[Entry] | None = None, limit: int = 20) -> list[Entry]:
+        """The most plausible few, by word overlap alone.
+
+        Narrowing to one app is not enough when that app is the whole list, and
+        a small model shown two hundred options answers confidently from the
+        wrong part of them. This costs nothing and runs before the model sees
+        anything. What it drops the model can never choose, so it ranks every
+        entry the same way rather than reserving room for any kind.
+
+        The app name counts as part of the text, so "quit claude" reaches
+        Claude's own menu without anything having to say which app that is.
+        """
+        rows = self.entries if entries is None else entries
+        wanted = [w for w in _words(goal) if w not in STOPWORDS]
+        if not wanted:
+            return rows[:limit]
+
+        def score(entry: Entry) -> tuple:
+            text = set(_words(entry.label)) | set(_words(entry.app))
+            covered = sum(1 for w in wanted if w in text)
+            return (covered / len(wanted), covered, -len(entry.label))
+
+        ranked = sorted(rows, key=score, reverse=True)
+        return ranked[:limit]
 
     def may_speculate(self, entry: Entry) -> bool:
         """Only the free class may run before the sentence is finished."""

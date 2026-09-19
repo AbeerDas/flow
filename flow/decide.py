@@ -41,6 +41,11 @@ PROFILES = {
 }
 DEFAULT_PROFILE = "vercel"
 
+# The local model names the boolean type differently and holds far fewer
+# options at once, which is what forces narrowing rather than one long list.
+LOCAL_MODEL = "convaiinnovations/laya"
+LOCAL_SUBFOLDER = "typed-decisions"
+
 
 def load_env() -> None:
     """Read .env.local without a dependency. Values never leave this process."""
@@ -100,6 +105,7 @@ class HostedEngine:
             raise RuntimeError(f"unknown profile {name!r}, pick one of {', '.join(PROFILES)}")
         chosen = PROFILES[name]
         self.profile = name
+        self.max_options = 255
         self.url = url or os.environ.get("FLOW_DECIDE_URL", chosen["url"])
         self.model = model or os.environ.get("FLOW_DECIDE_MODEL", chosen["model"])
         self.key = key or os.environ.get(chosen["key"])
@@ -171,3 +177,57 @@ def state_for(registry: Registry, candidates: list[Entry], frontmost: str | None
             for e in candidates
         ],
     }
+
+
+class LocalEngine:
+    """The open model, on this machine. No account, no network, no bill.
+
+    Holds about twenty options at a time against the hosted model's hundreds,
+    so callers narrow to one app before asking which control.
+    """
+
+    max_options = 20
+    profile = "local"
+
+    def __init__(self, model: str = LOCAL_MODEL, subfolder: str | None = LOCAL_SUBFOLDER):
+        import laya_mlx  # imported here so the hosted route needs no weights
+
+        self.model = model
+        self.agent = laya_mlx.load(model, subfolder=subfolder)
+
+    def ask(self, state: dict, questions: dict) -> Decision:
+        translated = {
+            name: {**q, "type": "noul" if q.get("type") == "boolean" else q["type"]}
+            for name, q in questions.items()
+        }
+        started = time.perf_counter()
+        result = self.agent.predict(state, translated)
+        latency = round((time.perf_counter() - started) * 1000)
+        return Decision(
+            answers={name: _local_answer(a) for name, a in result.get("answers", {}).items()},
+            latency_ms=latency,
+            usage=result.get("usage", {}),
+        )
+
+
+def _local_answer(raw: dict) -> Answer:
+    if raw.get("type") == "noul":
+        probability = float(raw.get("noul", 0.0))
+        return Answer(
+            choice="true" if probability >= 0.5 else "false",
+            confidence=float(raw.get("confidence", max(probability, 1.0 - probability))),
+            probabilities={"true": probability, "false": 1.0 - probability},
+        )
+    probabilities = {str(k): float(v) for k, v in (raw.get("probabilities") or {}).items()}
+    return Answer(
+        choice=str(raw.get("choice", "")),
+        confidence=float(raw.get("confidence") or max(probabilities.values(), default=0.0)),
+        probabilities=probabilities,
+    )
+
+
+def engine(profile: str | None = None):
+    """The configured route. FLOW_PROFILE=local needs nothing but the machine."""
+    load_env()
+    name = profile or os.environ.get("FLOW_PROFILE", DEFAULT_PROFILE)
+    return LocalEngine() if name == "local" else HostedEngine(name)
