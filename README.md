@@ -1,4 +1,4 @@
-# Jarvis
+# Flow
 
 Voice-first control of a Mac. Hold a key, say what you want, and it happens
 before you finish the sentence.
@@ -77,9 +77,9 @@ prints what your machine can currently do.
 ## Layout
 
 ```
-jarvis/registry.py        the list, the seven fields, the reversibility rules
-jarvis/adapters/base.py   what a surface has to provide
-jarvis/adapters/mac.py    native Mac windows, across every app
+flow/registry.py        the list, the seven fields, the reversibility rules
+flow/adapters/base.py   what a surface has to provide
+flow/adapters/mac.py    native Mac windows, across every app
 vendor/                   the accessibility bridge, MIT, see NOTICE.md
 scripts/scan.py           print the registry and exit
 ```

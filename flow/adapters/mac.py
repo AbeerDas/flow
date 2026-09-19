@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from jarvis.registry import Entry, Reversibility, Tier, Verb, reversibility_of
+from flow.registry import Entry, Reversibility, Tier, Verb, reversibility_of
 from vendor.bridge import Bridge, BridgeError, StaleWindow  # noqa: F401
 
 # What the bridge reports against what the registry calls it. Anything outside

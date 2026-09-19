@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from jarvis.adapters.mac import MacAdapter
+from flow.adapters.mac import MacAdapter
 
 a = MacAdapter()
 front = a.frontmost()

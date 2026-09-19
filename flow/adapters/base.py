@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from jarvis.registry import Entry, Tier
+from flow.registry import Entry, Tier
 
 
 class Adapter(Protocol):
