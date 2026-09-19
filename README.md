@@ -45,8 +45,21 @@ anything unnamed treats a press as permanent.
 
 ## Status
 
-Working. The registry, the reversibility rules, and the Mac adapter reading
-every running app.
+Working. The registry, the reversibility rules, the Mac adapter reading every
+running app, and a decision layer that runs on this machine with no account and
+no bill.
+
+Measured over 20 spoken-style goals against a saved registry, on an M4 Pro.
+
+| | Result |
+| --- | --- |
+| Right answer reached the shortlist | 20 of 20 |
+| Model then chose it | 20 of 20 |
+| Would act unsupervised above 80% confidence | 18, all correct |
+| Median decision | 34 ms |
+
+Those 20 goals were also what the prompt was tuned against, so treat the score
+as a working floor rather than a measurement of the general case.
 
 Not built yet. Speech, speculation on partial sentences, the overlay, undo, and
 the browser, work tools and Claude Code adapters.

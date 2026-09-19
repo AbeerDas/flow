@@ -40,7 +40,7 @@ candidates = registry.entries
 if len(candidates) > engine.max_options:
     candidates = registry.shortlist(goal, candidates, engine.max_options)
 
-decision = engine.ask(state_for(registry, candidates, front), questions_for(goal, candidates))
+decision = engine.ask(state_for(goal), questions_for(goal, candidates))
 action = decision.answers["action"]
 addressed = decision.answers.get("addressed")
 chosen = next((e for e in candidates if str(e.index) == action.choice), None)

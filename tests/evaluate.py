@@ -70,7 +70,10 @@ for goal, expected in GOALS:
         rows.append((goal, "in" if hit else "MISSED", f"rank {rank}" if hit else "", 0.0))
         continue
 
-    decision = engine.ask(state_for(registry, short, frontmost), questions_for(goal, short))
+    qs = questions_for(goal, short)
+    if "--action-only" in sys.argv:
+        qs = {"action": qs["action"]}
+    decision = engine.ask(state_for(goal), qs)
     answer = decision.answers["action"]
     chosen = next((e for e in short if str(e.index) == answer.choice), None)
     right = chosen is not None and expected.lower() in chosen.label.lower()
