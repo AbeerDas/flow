@@ -30,3 +30,34 @@ print(f"may speculate  {sum(1 for e in registry.entries if registry.may_speculat
 print()
 print(registry.render(deep[:25]))
 adapter.close()
+
+# A saved registry lets the decision layer be worked on without accessibility
+# permission, which the shell running the tests does not have.
+if "--dump" in sys.argv:
+    import json
+
+    out = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "registry.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        json.dumps(
+            {
+                "frontmost": front,
+                "entries": [
+                    {
+                        "index": e.index,
+                        "verb": e.verb.value,
+                        "label": e.label,
+                        "app": e.app,
+                        "owner": e.owner,
+                        "reversibility": e.reversibility.value,
+                        "observed_at": e.observed_at,
+                        "tier": e.tier.value,
+                        "needs_text": e.needs_text,
+                    }
+                    for e in registry.entries
+                ],
+            },
+            indent=1,
+        )
+    )
+    print(f"\nwrote {out} with {len(registry.entries)} entries")
