@@ -1,0 +1,9 @@
+[project]
+name = "jarvis"
+version = "0.0.1"
+description = "Voice-first computer control, built on one action registry"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["jarvis*", "vendor*"]
