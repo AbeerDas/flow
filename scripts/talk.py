@@ -12,11 +12,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from flow.adapters.mac import MacAdapter
 from flow.decide import describe, engine as make_engine
-from flow.listen import Ears, Trigger
+from flow.listen import PERMISSION, SAMPLE_RATE, Ears, Trigger
 from flow.registry import Registry
 from flow.run import execute
 
 commit = "--go" in sys.argv
+
+if "--key-test" in sys.argv:
+    # Prove the key is getting through before involving speech at all.
+    with Trigger() as trigger:
+        print("press Right Option a few times. ctrl-c to stop.")
+        try:
+            while True:
+                if trigger.wait_for_press(timeout=5.0):
+                    print("  got it, held…", end="", flush=True)
+                    while trigger.held.is_set():
+                        time.sleep(0.02)
+                    print(" released")
+                elif not trigger.saw_any.is_set():
+                    sys.exit("\n" + PERMISSION)
+        except KeyboardInterrupt:
+            sys.exit("\nstopped")
 
 print("loading, first run downloads the speech model…")
 ears = Ears()
@@ -39,10 +55,16 @@ def announce(step):
 with Trigger() as trigger:
     try:
         while True:
-            if not trigger.wait_for_press(timeout=1.0):
+            if not trigger.wait_for_press(timeout=5.0):
+                if not trigger.saw_any.is_set():
+                    print(PERMISSION)
+                    break
                 continue
             print("listening…", end="", flush=True)
             audio = ears.record_while(trigger.held)
+            if len(audio) < SAMPLE_RATE // 4:
+                print("\r too short, hold the key while you speak   ")
+                continue
             started = time.time()
             said = ears.transcribe(audio)
             heard_ms = (time.time() - started) * 1000

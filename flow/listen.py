@@ -49,6 +49,16 @@ class Ears:
         return np.concatenate(frames)[:, 0]
 
 
+PERMISSION = """No key presses are reaching this process.
+
+macOS needs Input Monitoring as well as Accessibility, and they are separate
+switches. System Settings > Privacy & Security > Input Monitoring, then add the
+application running this shell and restart it.
+
+To check which application that is:
+    ps -o comm= -p $(ps -o ppid= -p $PPID)"""
+
+
 class Trigger:
     """One key, held. Right Option, because nothing else wants it."""
 
@@ -58,10 +68,14 @@ class Trigger:
         self.keyboard = keyboard
         self.key = getattr(keyboard.Key, key_name)
         self.held = threading.Event()
+        # Nothing arriving at all means the listener is not permitted, which
+        # macOS reports by silence rather than by an error.
+        self.saw_any = threading.Event()
         self.pressed = threading.Event()
         self.listener = keyboard.Listener(on_press=self._down, on_release=self._up)
 
     def _down(self, key):
+        self.saw_any.set()
         if key == self.key and not self.held.is_set():
             self.held.set()
             self.pressed.set()
