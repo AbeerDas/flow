@@ -85,10 +85,17 @@ def execute(
     registry: Registry,
     *,
     commit: bool = False,
+    ceiling: Reversibility = Reversibility.PERMANENT,
     confirm: Callable[[Entry, float, str | None], bool] | None = None,
     on_step: Callable[[Step], None] | None = None,
     max_steps: int = MAX_STEPS,
 ) -> Run:
+    """`ceiling` is the most consequential class allowed to run.
+
+    Set to FREE it still switches apps, which is what lets a multi-step request
+    make progress, and reports everything heavier instead of doing it. That is
+    what makes a workflow observable end to end without changing anything.
+    """
     run = Run(goal=goal)
 
     for _ in range(max_steps):
@@ -118,10 +125,11 @@ def execute(
         if on_step:
             on_step(step)
 
-        if not commit:
-            step.outcome = f"would {describe(entry)}"
+        if not commit or entry.reversibility.value > ceiling.value:
+            detail = f' with "{text}"' if text else ""
+            step.outcome = f"would {describe(entry)}{detail}"
             run.steps.append(step)
-            run.verdict = "dry run"
+            run.verdict = "planned, stopped before acting"
             return run
 
         allowed = entry.reversibility is Reversibility.FREE or answer.confidence >= engine.threshold
