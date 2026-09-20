@@ -49,24 +49,28 @@ Working. The registry, the reversibility rules, the Mac adapter reading every
 running app, and a decision layer that runs on this machine with no account and
 no bill.
 
-Measured against a live 234 entry registry on an M4 Pro.
+Measured against a live registry of 234 controls plus 84 launchable apps.
 
 | | Result |
 | --- | --- |
-| Right answer reached the shortlist | 20 of 20 |
-| Model then chose it | 19 of 20, the twentieth declined rather than guessed |
-| Acts unsupervised | 15, all correct, none wrong |
+| Correct first action | 19 of 20, the twentieth declined rather than guessed |
 | Nonsense requests declined | 7 of 7 |
-| Median decision | 34 ms |
+| Median decision | 34 ms on an M4 Pro |
 
-Two things carry that. The list is held to eight options, because longer is
-both less accurate and uniformly confident: at twelve, nonsense scored the same
-0.98 as real commands. And the options include one for declining, because
-without somewhere to put a request that matches nothing, everything resolves to
-the nearest control.
+Four rules carry that, each one measured rather than guessed.
 
-Confidence is a second gate rather than the main one. It does not separate on
-its own, with nonsense reaching 0.14 and real commands going down to 0.08.
+Eight options, not twenty. Longer is less accurate and, worse, uniformly
+confident: at twelve, nonsense scored the same 0.98 as real commands.
+
+Naming an app scopes the request to it. Ranking alone was not enough, because
+"open notes" put the Notes app first and the model still preferred a button
+labelled with a pull request title, purely because it was on the list.
+
+One option means nothing here matches. Without somewhere to put a request that
+matches nothing, every request resolves to the nearest control.
+
+Finishing is only offered once something has happened. Offered on the first
+step, the model took it for nearly every request.
 
 Those 20 goals were also what this was tuned against, so treat the score as a
 working floor rather than a measurement of the general case.

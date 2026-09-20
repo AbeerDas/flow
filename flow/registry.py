@@ -210,6 +210,14 @@ class Registry:
         # ever relevant when the app is named. Left in, nonsense requests found
         # somewhere to land and declining fell from 7 of 7 to 5 of 7.
         rows = [e for e in rows if e.verb is not Verb.LAUNCH_APP or _names(e.app, wanted)]
+
+        # Naming an app scopes the request to it. Ranking alone was not enough:
+        # "open notes" put the Notes app first and the model still preferred a
+        # button labelled with a pull request title, because that button was on
+        # the list at all. Naming an app takes the others off it.
+        named_apps = {e.app for e in rows if _names(e.app, wanted)}
+        if named_apps:
+            rows = [e for e in rows if e.app in named_apps]
         ranked = sorted(rows, key=score, reverse=True)
         # A window can offer the same control several times over, and three
         # identical lines give one option three times the surface area without
