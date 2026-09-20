@@ -52,3 +52,16 @@ def spans(goal: str) -> list[str]:
             seen.add(cleaned.lower())
             unique.append(cleaned)
     return unique[:5]
+
+
+def wants_text(goal: str) -> bool:
+    """Does the request ask for something to be typed?
+
+    A marker with words after it is the signal. "Write" alone is a verb about
+    an app; "write pick up milk" carries its own payload.
+    """
+    for marker in sorted(MARKERS, key=len, reverse=True):
+        match = re.search(rf"\b{re.escape(marker)}\b", goal, re.IGNORECASE)
+        if match and goal[match.end() :].strip(" ,:."):
+            return True
+    return bool(QUOTED.search(goal))

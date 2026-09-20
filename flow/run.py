@@ -12,7 +12,7 @@ from typing import Callable
 
 from flow.decide import DECLINE, describe, state_for
 from flow.registry import Entry, Registry, Reversibility, Tier
-from flow.text import spans
+from flow.text import spans, wants_text
 
 DONE = "done"
 MAX_STEPS = 6
@@ -32,6 +32,10 @@ class Run:
     steps: list[Step] = field(default_factory=list)
     verdict: str = ""
 
+    def owes_text(self, goal: str) -> bool:
+        """Was typing asked for, and has none happened?"""
+        return wants_text(goal) and not any(step.text for step in self.steps)
+
     def history(self) -> str:
         done = [s.outcome for s in self.steps if s.outcome]
         return "; ".join(done) if done else "nothing yet"
@@ -49,10 +53,15 @@ def next_question(goal: str, run: Run, candidates: list[Entry]) -> dict:
             ),
             "criteria": {
                 **{str(e.index): describe(e) for e in candidates},
-                # Finishing is only offered once something has happened. Given
-                # it on the first step the model took it for nearly every
-                # request, including ones it had done nothing about.
-                **({DONE: "every part of the request has already been carried out"} if run.steps else {}),
+                # Finishing is only offered once something has happened, and
+                # not while a request that asked for text still has none typed.
+                # Switching to Notes and calling "open notes and write pick up
+                # milk" complete is the failure this prevents.
+                **(
+                    {DONE: "every part of the request has already been carried out"}
+                    if run.steps and not run.owes_text(goal)
+                    else {}
+                ),
                 DECLINE: "nothing here matches what the user asked for",
             },
         }
@@ -108,7 +117,16 @@ def execute(
 
     for _ in range(max_steps):
         observe(adapter, registry)
+        # Refusing to finish while text is owed only helps when something can
+        # accept text. Where nothing can, say so rather than circling.
+        if run.owes_text(goal) and not any(e.needs_text for e in registry.entries):
+            run.verdict = "nowhere to type, this window offers no text field"
+            return run
         candidates = registry.shortlist(goal, registry.entries, engine.max_options)
+        # A request that owes text should be looking at the places that take it.
+        typeable = [e for e in registry.entries if e.needs_text]
+        if run.owes_text(goal) and typeable and not any(e.needs_text for e in candidates):
+            candidates = (typeable + candidates)[: engine.max_options]
         answer = engine.ask(state_for(goal), next_question(goal, run, candidates)).answers["action"]
 
         if answer.choice == DONE:
