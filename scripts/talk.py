@@ -68,14 +68,22 @@ def announce(step):
     print(f"   {step.confidence:.2f}  {describe(step.entry)}{detail}")
 
 
+idle = 0.0
+warned = False
+
 with Trigger() as trigger:
     try:
         while True:
             if not trigger.wait_for_press(timeout=5.0):
-                if not trigger.saw_any.is_set():
-                    print(PERMISSION)
-                    break
+                # Silence is ambiguous. Nobody pressing anything looks exactly
+                # like the listener not being permitted, so say so once, late,
+                # and carry on waiting either way.
+                idle += 5.0
+                if idle >= 30.0 and not trigger.saw_any.is_set() and not warned:
+                    print(PERMISSION + "\n\nStill waiting, in case you were just idle.\n")
+                    warned = True
                 continue
+            idle = 0.0
             print("listening…", end="", flush=True)
             audio = ears.record_while(trigger.held)
             if len(audio) < SAMPLE_RATE // 5:
