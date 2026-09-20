@@ -18,6 +18,21 @@ from flow.run import execute
 
 commit = "--go" in sys.argv
 
+if "--mic-test" in sys.argv:
+    # Proves the microphone and the speech model without involving the key.
+    import numpy as np
+
+    print("loading the speech model…")
+    ears = Ears()
+    print("say something, recording for 4 seconds…")
+    clip = ears.record_for(4.0)
+    level = float(np.abs(clip).max()) if len(clip) else 0.0
+    print(f"captured {len(clip)} samples, peak level {level:.3f}")
+    if level < 0.01:
+        sys.exit("that is silence. Check the input device and microphone permission.")
+    print(f'heard "{ears.transcribe(clip)}"')
+    sys.exit(0)
+
 if "--key-test" in sys.argv:
     # Prove the key is getting through before involving speech at all.
     with Trigger() as trigger:
@@ -62,8 +77,8 @@ with Trigger() as trigger:
                 continue
             print("listening…", end="", flush=True)
             audio = ears.record_while(trigger.held)
-            if len(audio) < SAMPLE_RATE // 4:
-                print("\r too short, hold the key while you speak   ")
+            if len(audio) < SAMPLE_RATE // 5:
+                print(f"\r too short ({len(audio)} samples), hold the key while you speak   ")
                 continue
             started = time.time()
             said = ears.transcribe(audio)

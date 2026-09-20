@@ -11,6 +11,10 @@ import threading
 import time
 
 SAMPLE_RATE = 16000
+# Enough samples to fill one analysis window.
+MIN_SAMPLES = SAMPLE_RATE // 5
+# Kept recording past the key coming up, so the last word survives.
+TAIL_SECONDS = 0.25
 MODEL = "mlx-community/parakeet-tdt-0.6b-v3"
 
 
@@ -25,28 +29,51 @@ class Ears:
     def transcribe(self, audio) -> str:
         import mlx.core as mx
 
+        # Below about a fifth of a second there are not enough samples to fill
+        # one analysis window, and the failure is a negative dimension deep in
+        # the transform rather than anything that names the cause.
+        if len(audio) < MIN_SAMPLES:
+            return ""
         with self.model.transcribe_stream(context_size=(256, 256)) as stream:
             stream.add_audio(mx.array(audio))
             return (stream.result.text or "").strip()
 
     def record_while(self, held: threading.Event, max_seconds: float = 20.0) -> object:
-        """Everything spoken between the key going down and coming up."""
+        """Everything spoken between the key going down and coming up.
+
+        A short tail runs past the release, because the last word is usually
+        still being said as the key comes up.
+        """
         import numpy as np
         import sounddevice as sd
 
         frames: list = []
-        with sd.InputStream(
+        stream = sd.InputStream(
             samplerate=SAMPLE_RATE,
             channels=1,
             dtype="float32",
             callback=lambda data, *_: frames.append(data.copy()),
-        ):
+        )
+        stream.start()
+        try:
             deadline = time.time() + max_seconds
             while held.is_set() and time.time() < deadline:
                 time.sleep(0.01)
+            time.sleep(TAIL_SECONDS)
+        finally:
+            stream.stop()
+            stream.close()
         if not frames:
             return np.zeros(0, dtype="float32")
         return np.concatenate(frames)[:, 0]
+
+    def record_for(self, seconds: float):
+        """A fixed clip, for proving the microphone works on its own."""
+        import sounddevice as sd
+
+        clip = sd.rec(int(seconds * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=1, dtype="float32")
+        sd.wait()
+        return clip[:, 0]
 
 
 PERMISSION = """No key presses are reaching this process.
