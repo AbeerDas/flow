@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flow.adapters.mac import MacAdapter
 from flow.decide import describe, engine as make_engine
 from flow.listen import PERMISSION, SAMPLE_RATE, Ears, Trigger
-from flow.notify import banner, sound
+from flow.notify import ask, banner, sound
 from flow.registry import Registry
 from flow.run import execute
 
@@ -64,7 +64,10 @@ sound("done")
 
 def confirm(entry, confidence, text):
     detail = f' with "{text}"' if text else ""
-    return input(f"   risky: {describe(entry)}{detail}. run it? [y/N] ").strip().lower() == "y"
+    question = f"{describe(entry)}{detail}"
+    if sys.stdin and sys.stdin.isatty():
+        return input(f"   risky: {question}. run it? [y/N] ").strip().lower() == "y"
+    return ask("Flow wants to do this", f"{question}\n\nConfidence {confidence:.0%}.")
 
 
 def announce(step):
@@ -104,7 +107,15 @@ with Trigger() as trigger:
                 continue
             sound("heard")
             print(f'\r heard "{said}"  ({heard_ms:.0f} ms)')
-            run = execute(said, adapter, engine, registry, commit=commit, confirm=confirm, on_step=announce)
+            try:
+                run = execute(said, adapter, engine, registry, commit=commit,
+                              confirm=confirm, on_step=announce)
+            except Exception as error:
+                # One bad request must not take the listener down with it.
+                sound("nothing")
+                banner("Flow hit a problem", str(error)[:150])
+                print(f"   failed: {error}\n")
+                continue
             print(f"   {run.verdict}\n")
             did = "; ".join(s.outcome for s in run.steps) or run.verdict
             sound("done" if run.steps else "nothing")

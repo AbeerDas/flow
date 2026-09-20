@@ -35,3 +35,26 @@ def banner(title: str, message: str) -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+
+
+def ask(title: str, message: str, timeout: int = 25) -> bool:
+    """A dialog, because a background process has no keyboard to read.
+
+    Asking on stdin killed the listener outright the first time something
+    needed confirming: detached there is no stdin, and the read raised.
+    """
+    if not shutil.which("osascript"):
+        return False
+    safe = message.replace('"', "'")[:200]
+    head = title.replace('"', "'")[:60]
+    script = (
+        'tell application "System Events" to display dialog '
+        f'"{safe}" with title "{head}" '
+        'buttons {"Cancel", "Run"} default button "Run" '
+        f"with icon caution giving up after {timeout}"
+    )
+    result = subprocess.run(
+        ["osascript", "-e", script], capture_output=True, text=True, timeout=timeout + 10
+    )
+    # Giving up counts as no. Silence should never be taken for consent.
+    return "button returned:Run" in result.stdout and "gave up:true" not in result.stdout
