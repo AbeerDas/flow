@@ -17,6 +17,7 @@ from flow.adapters.mac import MacAdapter
 from flow.decide import describe, engine as make_engine
 from flow.listen import PERMISSION, Ears, Trigger
 from flow.notify import ask, banner, sound
+from flow.journal import journal
 from flow.registry import Registry, Reversibility
 from flow.run import execute
 
@@ -69,7 +70,9 @@ def listen(overlay):
     mode = "acting" if commit else "dry run"
     if commit and trust is not Reversibility.FREE:
         mode += f", trusting up to {trust.name.lower()}"
-    print(f"ready. hold Right Option anywhere. {mode}.\n")
+    journal.fresh()
+    journal.write("ready", mode=mode, trust=trust.name)
+    print(f"ready. hold Right Option anywhere. {mode}. journal: {journal.path}\n")
     banner("Flow is listening", "Hold Right Option anywhere and speak.")
 
     def confirm(entry, confidence, text):
@@ -100,6 +103,7 @@ def listen(overlay):
                 said = ears.transcribe(audio)
                 if not said:
                     continue
+                journal.write("heard", said=said, samples=len(audio))
                 sound("heard")
                 overlay.say(said)
                 overlay.tint("working")
@@ -114,6 +118,8 @@ def listen(overlay):
                     overlay.say(f"Failed: {str(error)[:60]}")
                     print(f"   failed: {error}")
                     continue
+                journal.write("finished", said=said, verdict=run.verdict,
+                              steps=[s.outcome for s in run.steps])
                 did = "; ".join(s.outcome for s in run.steps) or run.verdict
                 if not run.steps and run.offered:
                     # Say what it was looking at, so a miss can be read rather

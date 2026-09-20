@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from flow.decide import DECLINE, describe, state_for
+from flow.journal import journal
 from flow.registry import Entry, Registry, Reversibility, Tier
 from flow.text import clauses, spans, wants_text
 
@@ -91,6 +92,12 @@ def observe(adapter, registry: Registry) -> str | None:
         name = app["name"]
         tier = Tier.DEEP if name == front else Tier.SHALLOW
         registry.replace(adapter.name, name, adapter.scan(name, tier))
+    journal.write(
+        "observed",
+        frontmost=front,
+        entries=len(registry.entries),
+        by_app={a: sum(1 for e in registry.entries if e.app == a) for a in registry.apps()[:20]},
+    )
     if hasattr(adapter, "launchable"):
         # An app that is not running is not in the accessibility tree, so
         # without these "open Notes" has no answer whenever Notes is closed.
@@ -161,6 +168,27 @@ def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
                 candidates = (here + candidates)[: engine.max_options]
         run.offered = [describe(e) for e in candidates]
         answer = engine.ask(state_for(goal), next_question(goal, run, candidates, whole)).answers["action"]
+        journal.write(
+            "decided",
+            clause=goal,
+            whole=whole,
+            chose=answer.choice,
+            confidence=round(answer.confidence, 3),
+            options=[
+                {
+                    "index": e.index,
+                    "verb": e.verb.value,
+                    "app": e.app,
+                    "label": e.label,
+                    "says": describe(e),
+                    "class": e.reversibility.name,
+                    "p": round(answer.probabilities.get(str(e.index), 0.0), 3),
+                }
+                for e in candidates
+            ],
+            p_decline=round(answer.probabilities.get(DECLINE, 0.0), 3),
+            p_done=round(answer.probabilities.get(DONE, 0.0), 3),
+        )
 
         if answer.choice == DONE:
             run.verdict = "finished"
@@ -218,11 +246,15 @@ def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
                 run.verdict = "stopped, not confirmed"
                 return
 
+        journal.write("acting", verb=entry.verb.value, label=entry.label, app=entry.app,
+                      text=text, handle=entry.handle)
         try:
             adapter.execute(entry, text)
             step.outcome = describe(entry) + (f' with "{text}"' if text else "")
+            journal.write("acted", label=entry.label, app=entry.app, text=text)
         except Exception as error:
             message = str(error)
+            journal.write("action_failed", label=entry.label, app=entry.app, error=message[:300])
             if "disabled" in message or "does not offer" in message:
                 # The bridge reports menu items without saying whether they are
                 # greyed out, and only refuses on execution. Take it off the
