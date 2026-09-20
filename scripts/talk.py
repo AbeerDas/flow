@@ -17,10 +17,17 @@ from flow.adapters.mac import MacAdapter
 from flow.decide import describe, engine as make_engine
 from flow.listen import PERMISSION, Ears, Trigger
 from flow.notify import ask, banner, sound
-from flow.registry import Registry
+from flow.registry import Registry, Reversibility
 from flow.run import execute
 
 commit = "--go" in sys.argv
+# --trust lets undoable things through without asking; permanent still stops.
+# --reckless stops asking about anything at all.
+trust = Reversibility.FREE
+if "--trust" in sys.argv:
+    trust = Reversibility.UNDOABLE
+if "--reckless" in sys.argv:
+    trust = Reversibility.PERMANENT
 
 
 if "--mic-test" in sys.argv:
@@ -59,7 +66,10 @@ def listen(overlay):
     adapter = MacAdapter()
     engine = make_engine()
     registry = Registry()
-    print(f"ready. hold Right Option anywhere. {'acting' if commit else 'dry run'}.\n")
+    mode = "acting" if commit else "dry run"
+    if commit and trust is not Reversibility.FREE:
+        mode += f", trusting up to {trust.name.lower()}"
+    print(f"ready. hold Right Option anywhere. {mode}.\n")
     banner("Flow is listening", "Hold Right Option anywhere and speak.")
 
     def confirm(entry, confidence, text):
@@ -96,7 +106,8 @@ def listen(overlay):
                 print(f'heard "{said}"')
                 try:
                     run = execute(
-                        said, adapter, engine, registry, commit=commit, confirm=confirm
+                        said, adapter, engine, registry, commit=commit,
+                        trust=trust, confirm=confirm,
                     )
                 except Exception as error:
                     overlay.tint("nothing")
@@ -104,6 +115,12 @@ def listen(overlay):
                     print(f"   failed: {error}")
                     continue
                 did = "; ".join(s.outcome for s in run.steps) or run.verdict
+                if not run.steps and run.offered:
+                    # Say what it was looking at, so a miss can be read rather
+                    # than guessed at.
+                    print("   it was choosing between:")
+                    for option in run.offered:
+                        print(f"     - {option}")
                 acted += len(run.steps)
                 overlay.tint("done" if run.steps else "nothing")
                 overlay.say(did[:90])

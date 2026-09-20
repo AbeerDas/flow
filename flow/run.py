@@ -31,6 +31,9 @@ class Run:
     goal: str
     steps: list[Step] = field(default_factory=list)
     verdict: str = ""
+    # What the model was looking at when it last chose. A miss is otherwise
+    # indistinguishable from the right answer never being on the list.
+    offered: list[str] = field(default_factory=list)
 
     def owes_text(self, goal: str) -> bool:
         """Was typing asked for, and has none happened?"""
@@ -103,11 +106,18 @@ def execute(
     *,
     commit: bool = False,
     ceiling: Reversibility = Reversibility.PERMANENT,
+    trust: Reversibility = Reversibility.FREE,
     confirm: Callable[[Entry, float, str | None], bool] | None = None,
     on_step: Callable[[Step], None] | None = None,
     max_steps: int = MAX_STEPS,
 ) -> Run:
     """`ceiling` is the most consequential class allowed to run.
+
+    `trust` is the class that runs without asking. Free by default: opening and
+    switching happen, anything that leaves a mark waits for a person. Raised to
+    undoable, typing and menu commands go through too and only the permanent
+    things stop.
+
 
     Set to FREE it still switches apps, which is what lets a multi-step request
     make progress, and reports everything heavier instead of doing it. That is
@@ -120,7 +130,7 @@ def execute(
     # rather than answered with its first half.
     for clause in clauses(goal):
         _carry_out(clause, goal, run, adapter, engine, registry,
-                   commit=commit, ceiling=ceiling, confirm=confirm,
+                   commit=commit, ceiling=ceiling, trust=trust, confirm=confirm,
                    on_step=on_step, max_steps=max_steps)
         if run.verdict in ("nothing matched", "failed", "stopped, not confirmed"):
             break
@@ -130,7 +140,8 @@ def execute(
 
 
 def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
-               confirm, on_step, max_steps) -> None:
+               trust, confirm, on_step, max_steps) -> None:
+    blocked: set[tuple] = set()
     for _ in range(max_steps):
         registry_front = observe(adapter, registry)
         # Refusing to finish while text is owed only helps when something can
@@ -139,6 +150,7 @@ def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
             run.verdict = "nowhere to type, this window offers no text field"
             return
         candidates = registry.shortlist(goal, registry.entries, engine.max_options)
+        candidates = [c for c in candidates if (c.verb, c.label, c.app) not in blocked]
         # Once the request has got somewhere, a request that owes text should
         # be looking at whatever can take it. Not before: forcing text fields
         # up front made "open notes and write pick up milk" try to type into
@@ -147,6 +159,7 @@ def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
             here = [e for e in registry.entries if e.needs_text and e.app == (registry_front or e.app)]
             if here and not any(e.needs_text for e in candidates):
                 candidates = (here + candidates)[: engine.max_options]
+        run.offered = [describe(e) for e in candidates]
         answer = engine.ask(state_for(goal), next_question(goal, run, candidates, whole)).answers["action"]
 
         if answer.choice == DONE:
@@ -163,8 +176,9 @@ def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
 
         # Asked to open Notes it opened Notes, looked again, and opened it
         # again. Repeating the step just taken is never the next step.
-        if run.steps and run.steps[-1].entry is not None:
-            last = run.steps[-1].entry
+        done = [st for st in run.steps if not st.outcome.startswith("skipped")]
+        if done and done[-1].entry is not None:
+            last = done[-1].entry
             if (last.verb, last.label, last.app) == (entry.verb, entry.label, entry.app):
                 run.verdict = "finished"
                 return
@@ -195,8 +209,9 @@ def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
             run.verdict = "planned, stopped before acting"
             return
 
-        allowed = entry.reversibility is Reversibility.FREE or answer.confidence >= engine.threshold
-        if entry.reversibility is Reversibility.PERMANENT or not allowed:
+        trusted = entry.reversibility.value <= trust.value
+        sure = answer.confidence >= engine.threshold
+        if not trusted and (entry.reversibility is Reversibility.PERMANENT or not sure):
             if confirm is None or not confirm(entry, answer.confidence, text):
                 step.outcome = "left alone"
                 run.steps.append(step)
@@ -207,7 +222,16 @@ def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
             adapter.execute(entry, text)
             step.outcome = describe(entry) + (f' with "{text}"' if text else "")
         except Exception as error:
-            step.outcome = f"failed, {str(error)[:80]}"
+            message = str(error)
+            if "disabled" in message or "does not offer" in message:
+                # The bridge reports menu items without saying whether they are
+                # greyed out, and only refuses on execution. Take it off the
+                # table and look again rather than ending the run.
+                blocked.add((entry.verb, entry.label, entry.app))
+                step.outcome = f"skipped, {message[:60]}"
+                run.steps.append(step)
+                continue
+            step.outcome = f"failed, {message[:80]}"
             run.steps.append(step)
             run.verdict = "failed"
             return

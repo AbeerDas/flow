@@ -7,6 +7,7 @@ leaves the machine.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 
@@ -22,7 +23,10 @@ MIN_PHRASE = 0.35
 MIN_SAMPLES = SAMPLE_RATE // 5
 # Kept recording past the key coming up, so the last word survives.
 TAIL_SECONDS = 0.25
-MODEL = "mlx-community/parakeet-tdt-0.6b-v3"
+# v3 is multilingual and will happily render "youtube dot com" in Cyrillic.
+# v2 is English only and does not. FLOW_SPEECH_MODEL overrides either way.
+MODEL = os.environ.get("FLOW_SPEECH_MODEL", "mlx-community/parakeet-tdt-0.6b-v3")
+ENGLISH_MODEL = "mlx-community/parakeet-tdt-0.6b-v2"
 
 
 class Ears:
