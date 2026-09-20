@@ -8,15 +8,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from flow.adapters.mac import MacAdapter
 from flow.registry import Registry, Reversibility, Tier
+from flow.run import observe
 
 adapter = MacAdapter()
 registry = Registry()
-front = adapter.frontmost()
-
-for app in adapter.apps():
-    name = app["name"]
-    tier = Tier.DEEP if name == front else Tier.SHALLOW
-    registry.replace(adapter.name, name, adapter.scan(name, tier))
+# The same read the real thing does, so a saved registry matches what runs.
+front = observe(adapter, registry)
 
 deep = registry.narrow(tier=Tier.DEEP)
 shallow = registry.narrow(tier=Tier.SHALLOW)

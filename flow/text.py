@@ -65,3 +65,32 @@ def wants_text(goal: str) -> bool:
         if match and goal[match.end() :].strip(" ,:."):
             return True
     return bool(QUOTED.search(goal))
+
+
+# Joins that separate two instructions rather than two things in one.
+SPLITS = re.compile(r"\b(?:and then|then|and)\b", re.IGNORECASE)
+
+
+def clauses(goal: str) -> list[str]:
+    """One request, split where it holds two instructions.
+
+    "Open notes and write pick up milk" is two things, and asked as one the
+    model declines rather than choosing a half. Splitting is code's job: the
+    join is in the sentence, not in the meaning.
+
+    A join inside the words meant for typing is left alone, since "buy eggs
+    and bread" is one thing.
+    """
+    head = goal
+    payload = ""
+    for marker in sorted(MARKERS, key=len, reverse=True):
+        match = re.search(rf"\b{re.escape(marker)}\b", goal, re.IGNORECASE)
+        if match and goal[match.end() :].strip(" ,:."):
+            head, payload = goal[: match.start()], goal[match.start() :]
+            break
+
+    parts = [p.strip(" ,.") for p in SPLITS.split(head)]
+    parts = [p for p in parts if p]
+    if payload.strip():
+        parts.append(payload.strip(" ,."))
+    return parts or [goal]

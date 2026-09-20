@@ -12,7 +12,7 @@ from typing import Callable
 
 from flow.decide import DECLINE, describe, state_for
 from flow.registry import Entry, Registry, Reversibility, Tier
-from flow.text import spans, wants_text
+from flow.text import clauses, spans, wants_text
 
 DONE = "done"
 MAX_STEPS = 6
@@ -41,7 +41,7 @@ class Run:
         return "; ".join(done) if done else "nothing yet"
 
 
-def next_question(goal: str, run: Run, candidates: list[Entry]) -> dict:
+def next_question(goal: str, run: Run, candidates: list[Entry], whole: str | None = None) -> dict:
     return {
         "action": {
             "type": "choice",
@@ -59,7 +59,7 @@ def next_question(goal: str, run: Run, candidates: list[Entry]) -> dict:
                 # milk" complete is the failure this prevents.
                 **(
                     {DONE: "every part of the request has already been carried out"}
-                    if run.steps and not run.owes_text(goal)
+                    if run.steps and not run.owes_text(whole or goal)
                     else {}
                 ),
                 DECLINE: "nothing here matches what the user asked for",
@@ -115,38 +115,56 @@ def execute(
     """
     run = Run(goal=goal)
 
+    # A request holding two instructions is answered one at a time. Asked
+    # together, "open notes and write pick up milk" was declined outright
+    # rather than answered with its first half.
+    for clause in clauses(goal):
+        _carry_out(clause, goal, run, adapter, engine, registry,
+                   commit=commit, ceiling=ceiling, confirm=confirm,
+                   on_step=on_step, max_steps=max_steps)
+        if run.verdict in ("nothing matched", "failed", "stopped, not confirmed"):
+            break
+    if run.steps and run.verdict == "nothing matched":
+        run.verdict = "finished, nothing further matched"
+    return run
+
+
+def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
+               confirm, on_step, max_steps) -> None:
     for _ in range(max_steps):
         registry_front = observe(adapter, registry)
         # Refusing to finish while text is owed only helps when something can
         # accept text. Where nothing can, say so rather than circling.
-        if run.steps and run.owes_text(goal) and not any(e.needs_text for e in registry.entries):
+        if run.steps and run.owes_text(whole) and not any(e.needs_text for e in registry.entries):
             run.verdict = "nowhere to type, this window offers no text field"
-            return run
+            return
         candidates = registry.shortlist(goal, registry.entries, engine.max_options)
         # Once the request has got somewhere, a request that owes text should
         # be looking at whatever can take it. Not before: forcing text fields
         # up front made "open notes and write pick up milk" try to type into
         # the window it started in.
-        if run.steps and run.owes_text(goal):
+        if run.steps and run.owes_text(whole):
             here = [e for e in registry.entries if e.needs_text and e.app == (registry_front or e.app)]
             if here and not any(e.needs_text for e in candidates):
                 candidates = (here + candidates)[: engine.max_options]
-        answer = engine.ask(state_for(goal), next_question(goal, run, candidates)).answers["action"]
+        answer = engine.ask(state_for(goal), next_question(goal, run, candidates, whole)).answers["action"]
 
         if answer.choice == DONE:
             run.verdict = "finished"
-            return run
+            return
         if answer.choice == DECLINE:
-            run.verdict = "nothing matched" if not run.steps else "finished, nothing further matched"
-            return run
+            run.verdict = "nothing matched"
+            return
 
         entry = next((e for e in candidates if str(e.index) == answer.choice), None)
         if entry is None:
             run.verdict = f"chose {answer.choice!r}, which was not offered"
-            return run
+            return
 
         text = None
         if entry.needs_text:
+            # From this clause, not the whole request. Offered the whole one,
+            # it typed "open notes and write pick up milk" into the note.
             options = spans(goal)
             pick = engine.ask(state_for(goal), text_question(goal, options)).answers["text"]
             text = options[int(pick.choice)] if pick.choice.isdigit() else options[0]
@@ -160,7 +178,7 @@ def execute(
             step.outcome = f"would {describe(entry)}{detail}"
             run.steps.append(step)
             run.verdict = "planned, stopped before acting"
-            return run
+            return
 
         allowed = entry.reversibility is Reversibility.FREE or answer.confidence >= engine.threshold
         if entry.reversibility is Reversibility.PERMANENT or not allowed:
@@ -168,7 +186,7 @@ def execute(
                 step.outcome = "left alone"
                 run.steps.append(step)
                 run.verdict = "stopped, not confirmed"
-                return run
+                return
 
         try:
             adapter.execute(entry, text)
@@ -177,8 +195,7 @@ def execute(
             step.outcome = f"failed, {str(error)[:80]}"
             run.steps.append(step)
             run.verdict = "failed"
-            return run
+            return
         run.steps.append(step)
 
     run.verdict = f"stopped after {max_steps} steps"
-    return run

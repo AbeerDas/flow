@@ -96,6 +96,9 @@ def reversibility_of(verb: Verb, app: str) -> Reversibility:
     return floor
 
 
+# Below this the model starts declining instead of choosing.
+MIN_CANDIDATES = 5
+
 COMMAND_VERBS = {Verb.MENU, Verb.FOCUS_APP, Verb.LAUNCH_APP}
 
 STOPWORDS = {"the", "a", "an", "to", "in", "on", "my", "me", "please", "and", "of", "for", "it"}
@@ -189,7 +192,7 @@ class Registry:
         if not wanted:
             return rows[:limit]
 
-        def score(entry: Entry) -> tuple:
+        def score(entry: Entry) -> tuple:  # noqa: C901
             app = set(_words(entry.app))
             text = set(_words(entry.label)) | app
             covered = sum(1 for w in wanted if w in text)
@@ -217,7 +220,21 @@ class Registry:
         # the list at all. Naming an app takes the others off it.
         named_apps = {e.app for e in rows if _names(e.app, wanted)}
         if named_apps:
-            rows = [e for e in rows if e.app in named_apps]
+            scoped = [e for e in rows if e.app in named_apps]
+            # Scoping to one app can leave a single option, and this model
+            # declines rather than choosing when the list is that short. Keep
+            # the named app's entries first and fill the rest behind them.
+            if len(scoped) < MIN_CANDIDATES:
+                # Pad with named commands only. Padding with whatever ranked
+                # next brought back the buttons carrying page text, and "open
+                # safari" went to one of them again.
+                rest = [
+                    e for e in rows
+                    if e.app not in named_apps and e.verb in COMMAND_VERBS
+                ]
+                rows = scoped + sorted(rest, key=score, reverse=True)
+            else:
+                rows = scoped
         ranked = sorted(rows, key=score, reverse=True)
         # A window can offer the same control several times over, and three
         # identical lines give one option three times the surface area without
