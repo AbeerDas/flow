@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flow.adapters.mac import MacAdapter
 from flow.decide import describe, engine as make_engine
 from flow.listen import PERMISSION, SAMPLE_RATE, Ears, Trigger
+from flow.notify import banner, sound
 from flow.registry import Registry
 from flow.run import execute
 
@@ -56,6 +57,8 @@ adapter = MacAdapter()
 engine = make_engine()
 registry = Registry()
 print(f"ready. hold Right Option and speak. ctrl-c to stop. {'acting' if commit else 'dry run'}.\n")
+banner("Flow is listening", "Hold Right Option anywhere and speak.")
+sound("done")
 
 
 def confirm(entry, confidence, text):
@@ -84,20 +87,27 @@ with Trigger() as trigger:
                     warned = True
                 continue
             idle = 0.0
+            sound("listening")
             print("listening…", end="", flush=True)
             audio = ears.record_while(trigger.held)
             if len(audio) < SAMPLE_RATE // 5:
+                sound("nothing")
                 print(f"\r too short ({len(audio)} samples), hold the key while you speak   ")
                 continue
             started = time.time()
             said = ears.transcribe(audio)
             heard_ms = (time.time() - started) * 1000
             if not said:
+                sound("nothing")
                 print("\r nothing heard   ")
                 continue
+            sound("heard")
             print(f'\r heard "{said}"  ({heard_ms:.0f} ms)')
             run = execute(said, adapter, engine, registry, commit=commit, confirm=confirm, on_step=announce)
             print(f"   {run.verdict}\n")
+            did = "; ".join(s.outcome for s in run.steps) or run.verdict
+            sound("done" if run.steps else "nothing")
+            banner(said, did)
     except KeyboardInterrupt:
         print("\nstopped")
     finally:

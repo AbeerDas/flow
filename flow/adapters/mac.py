@@ -244,15 +244,33 @@ class MacAdapter:
     def execute(self, entry: Entry, text: str | None = None) -> dict:
         handle = entry.handle or {}
         if handle.get("kind") == "activate":
-            return self.bridge.call("activate", app=handle["app"])
+            result = self.bridge.call("activate", app=handle["app"])
+            self.await_front(handle["app"])
+            return result
         if handle.get("kind") == "launch":
             subprocess.run(["open", "-a", handle["app"]], check=True, capture_output=True)
-            time.sleep(1.2)  # the window has to exist before it can be read
+            self.await_front(handle["app"], timeout=6.0)
             return {"launched": handle["app"]}
         request = {k: v for k, v in handle.items() if k not in ("kind", "fingerprint")}
         if text is not None:
             request["text"] = text
         return self.bridge.call("act", mutating=True, timeout=30, **request)
+
+    def await_front(self, app: str, timeout: float = 3.0) -> bool:
+        """Wait until the app really is in front before anything reads it.
+
+        Activating returns as soon as the request is sent. Reading straight
+        after still sees the window that was there, which is how "open notes
+        and write pick up milk" ended up looking at the window it started in.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self.frontmost() == app:
+                # In front is not the same as finished drawing.
+                time.sleep(0.35)
+                return True
+            time.sleep(0.1)
+        return False
 
     def close(self) -> None:
         self.bridge.close()

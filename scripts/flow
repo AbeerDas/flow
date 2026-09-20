@@ -1,0 +1,36 @@
+#!/bin/bash
+# Start, stop or check the listener. It keeps running after this shell closes.
+#
+# Permissions are granted to the application that owns the shell, and a
+# background process inherits them, which is why this starts from here rather
+# than from a login agent.
+set -uo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+pidfile="$root/.flow.pid"
+logfile="$root/.flow.log"
+
+running() { [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; }
+
+case "${1:-start}" in
+  start)
+    if running; then echo "already listening, pid $(cat "$pidfile")"; exit 0; fi
+    shift || true
+    nohup "$root/.venv/bin/python" "$root/scripts/talk.py" "$@" >"$logfile" 2>&1 &
+    echo $! > "$pidfile"
+    echo "listening, pid $!. hold Right Option anywhere."
+    echo "log: $logfile"
+    ;;
+  stop)
+    if running; then kill "$(cat "$pidfile")" && echo "stopped"; else echo "not running"; fi
+    rm -f "$pidfile"
+    ;;
+  status)
+    if running; then echo "listening, pid $(cat "$pidfile")"; else echo "not running"; fi
+    ;;
+  log)
+    tail -n "${2:-30}" "$logfile"
+    ;;
+  *)
+    echo "usage: flow [start [--go] | stop | status | log [lines]]"
+    ;;
+esac
