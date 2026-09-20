@@ -11,6 +11,13 @@ import threading
 import time
 
 SAMPLE_RATE = 16000
+# Quieter than this counts as not speaking. A laptop microphone idles well
+# under it and speech at arm's length sits well over.
+SILENCE_LEVEL = 0.015
+# A pause this long ends a phrase, and it acts on what was said before it.
+PHRASE_GAP = 0.65
+# Shorter than this is a cough, not an instruction.
+MIN_PHRASE = 0.35
 # Enough samples to fill one analysis window.
 MIN_SAMPLES = SAMPLE_RATE // 5
 # Kept recording past the key coming up, so the last word survives.
@@ -28,6 +35,7 @@ class Ears:
         self._stream = None
         self._frames: list = []
         self._keeping = False
+        self._level = 0.0
 
     def transcribe(self, audio) -> str:
         """Samples in, words out.
@@ -74,12 +82,22 @@ class Ears:
             channels=1,
             dtype="float32",
             callback=self._collect,
+            blocksize=int(SAMPLE_RATE * 0.05),
         )
         self._stream.start()
 
     def _collect(self, data, *_):
         if self._keeping:
             self._frames.append(data.copy())
+
+    def _drain(self) -> list:
+        """Take whatever has arrived since the last look."""
+        taken, self._frames = self._frames, []
+        return taken
+
+    def level(self) -> float:
+        """How loud it is right now, for something to draw."""
+        return self._level
 
     def record_while(self, held: threading.Event, max_seconds: float = 20.0):
         """Everything spoken between the key going down and coming up.
@@ -104,6 +122,51 @@ class Ears:
         if not frames:
             return np.zeros(0, dtype="float32")
         return np.concatenate(frames)[:, 0]
+
+    def phrases_while(self, held: threading.Event, max_seconds: float = 120.0):
+        """Speech, a phrase at a time, for as long as the key is held.
+
+        A pause ends a phrase and it is handed over straight away, so a request
+        is acted on while the next one is still being thought about. Holding
+        the key through silence is allowed and costs nothing.
+        """
+        import numpy as np
+
+        self.open_microphone()
+        self._drain()
+        self._keeping = True
+        buffered: list = []
+        quiet = 0.0
+        loud = 0.0
+        deadline = time.time() + max_seconds
+        try:
+            while held.is_set() and time.time() < deadline:
+                time.sleep(0.05)
+                arrived = self._drain()
+                if not arrived:
+                    continue
+                block = np.concatenate(arrived)[:, 0]
+                seconds = len(block) / SAMPLE_RATE
+                peak = float(np.abs(block).max())
+                self._level = peak
+                if peak < SILENCE_LEVEL:
+                    quiet += seconds
+                else:
+                    quiet = 0.0
+                    loud += seconds
+                buffered.append(block)
+                if quiet >= PHRASE_GAP and loud >= MIN_PHRASE:
+                    yield np.concatenate(buffered)
+                    buffered, quiet, loud = [], 0.0, 0.0
+            time.sleep(TAIL_SECONDS)
+            rest = self._drain()
+            if rest:
+                buffered.append(np.concatenate(rest)[:, 0])
+            if buffered and loud >= MIN_PHRASE:
+                yield np.concatenate(buffered)
+        finally:
+            self._keeping = False
+            self._level = 0.0
 
     def record_for(self, seconds: float):
         """A fixed clip, for proving the microphone works on its own."""

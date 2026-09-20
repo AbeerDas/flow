@@ -1,10 +1,13 @@
-"""Hold Right Option, say what you want, let go.
+"""Hold Right Option, speak, keep holding. It acts on each phrase as you finish it.
 
-    .venv/bin/python scripts/talk.py          # says what it would do
-    .venv/bin/python scripts/talk.py --go     # lets it act
+    .venv/bin/python scripts/talk.py            # says what it would do
+    .venv/bin/python scripts/talk.py --go       # lets it act
+    .venv/bin/python scripts/talk.py --mic-test # microphone and speech only
+    .venv/bin/python scripts/talk.py --key-test # the key only
 """
 
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -12,15 +15,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from flow.adapters.mac import MacAdapter
 from flow.decide import describe, engine as make_engine
-from flow.listen import PERMISSION, SAMPLE_RATE, Ears, Trigger
+from flow.listen import PERMISSION, Ears, Trigger
 from flow.notify import ask, banner, sound
 from flow.registry import Registry
 from flow.run import execute
 
 commit = "--go" in sys.argv
 
+
 if "--mic-test" in sys.argv:
-    # Proves the microphone and the speech model without involving the key.
     import numpy as np
 
     print("loading the speech model…")
@@ -32,11 +35,9 @@ if "--mic-test" in sys.argv:
     if level < 0.01:
         sys.exit("that is silence. Check the input device and microphone permission.")
     heard = ears.transcribe(clip)
-    print(f'heard "{heard}"' if heard else "heard nothing. Speak closer, or louder.")
-    sys.exit(0)
+    sys.exit(f'heard "{heard}"' if heard else "heard nothing. Speak closer, or louder.")
 
 if "--key-test" in sys.argv:
-    # Prove the key is getting through before involving speech at all.
     with Trigger() as trigger:
         print("press Right Option a few times. ctrl-c to stop.")
         try:
@@ -46,81 +47,89 @@ if "--key-test" in sys.argv:
                     while trigger.held.is_set():
                         time.sleep(0.02)
                     print(" released")
-                elif not trigger.saw_any.is_set():
-                    sys.exit("\n" + PERMISSION)
         except KeyboardInterrupt:
             sys.exit("\nstopped")
 
-print("loading, first run downloads the speech model…")
-ears = Ears()
-adapter = MacAdapter()
-engine = make_engine()
-registry = Registry()
-ears.open_microphone()  # fail here, at launch, rather than mid-press
-print(f"ready. hold Right Option and speak. ctrl-c to stop. {'acting' if commit else 'dry run'}.\n")
-banner("Flow is listening", "Hold Right Option anywhere and speak.")
-sound("done")
 
+def listen(overlay):
+    """Everything except the window. Runs beside it, never on its thread."""
+    print("loading the speech model…")
+    ears = Ears()
+    ears.open_microphone()
+    adapter = MacAdapter()
+    engine = make_engine()
+    registry = Registry()
+    print(f"ready. hold Right Option anywhere. {'acting' if commit else 'dry run'}.\n")
+    banner("Flow is listening", "Hold Right Option anywhere and speak.")
 
-def confirm(entry, confidence, text):
-    detail = f' with "{text}"' if text else ""
-    question = f"{describe(entry)}{detail}"
-    if sys.stdin and sys.stdin.isatty():
-        return input(f"   risky: {question}. run it? [y/N] ").strip().lower() == "y"
-    return ask("Flow wants to do this", f"{question}\n\nConfidence {confidence:.0%}.")
+    def confirm(entry, confidence, text):
+        detail = f' with "{text}"' if text else ""
+        question = f"{describe(entry)}{detail}"
+        overlay.tint("working")
+        overlay.say("Waiting for you…")
+        return ask("Flow wants to do this", f"{question}\n\nConfidence {confidence:.0%}.")
 
+    def meter(held):
+        """Keep the bars moving for as long as the key is down."""
+        while held.is_set():
+            overlay.meter(ears.level())
+            time.sleep(0.05)
 
-def announce(step):
-    detail = f' with "{step.text}"' if step.text else ""
-    print(f"   {step.confidence:.2f}  {describe(step.entry)}{detail}")
-
-
-idle = 0.0
-warned = False
-
-with Trigger() as trigger:
-    try:
+    with Trigger() as trigger:
         while True:
             if not trigger.wait_for_press(timeout=5.0):
-                # Silence is ambiguous. Nobody pressing anything looks exactly
-                # like the listener not being permitted, so say so once, late,
-                # and carry on waiting either way.
-                idle += 5.0
-                if idle >= 30.0 and not trigger.saw_any.is_set() and not warned:
-                    print(PERMISSION + "\n\nStill waiting, in case you were just idle.\n")
-                    warned = True
                 continue
-            idle = 0.0
             sound("listening")
-            print("listening…", end="", flush=True)
-            audio = ears.record_while(trigger.held)
-            if len(audio) < SAMPLE_RATE // 5:
-                sound("nothing")
-                print(f"\r too short ({len(audio)} samples), hold the key while you speak   ")
-                continue
-            started = time.time()
-            said = ears.transcribe(audio)
-            heard_ms = (time.time() - started) * 1000
-            if not said:
-                sound("nothing")
-                print("\r nothing heard   ")
-                continue
-            sound("heard")
-            print(f'\r heard "{said}"  ({heard_ms:.0f} ms)')
-            try:
-                run = execute(said, adapter, engine, registry, commit=commit,
-                              confirm=confirm, on_step=announce)
-            except Exception as error:
-                # One bad request must not take the listener down with it.
-                sound("nothing")
-                banner("Flow hit a problem", str(error)[:150])
-                print(f"   failed: {error}\n")
-                continue
-            print(f"   {run.verdict}\n")
-            did = "; ".join(s.outcome for s in run.steps) or run.verdict
-            sound("done" if run.steps else "nothing")
-            banner(said, did)
-    except KeyboardInterrupt:
-        print("\nstopped")
-    finally:
-        adapter.close()
+            overlay.tint("listening")
+            overlay.say("Listening…")
+            overlay.show()
+            threading.Thread(target=meter, args=(trigger.held,), daemon=True).start()
+
+            acted = 0
+            for audio in ears.phrases_while(trigger.held):
+                said = ears.transcribe(audio)
+                if not said:
+                    continue
+                sound("heard")
+                overlay.say(said)
+                overlay.tint("working")
+                print(f'heard "{said}"')
+                try:
+                    run = execute(
+                        said, adapter, engine, registry, commit=commit, confirm=confirm
+                    )
+                except Exception as error:
+                    overlay.tint("nothing")
+                    overlay.say(f"Failed: {str(error)[:60]}")
+                    print(f"   failed: {error}")
+                    continue
+                did = "; ".join(s.outcome for s in run.steps) or run.verdict
+                acted += len(run.steps)
+                overlay.tint("done" if run.steps else "nothing")
+                overlay.say(did[:90])
+                sound("done" if run.steps else "nothing")
+                print(f"   {did}")
+                # Back to listening, because the key is still down.
+                if trigger.held.is_set():
+                    time.sleep(0.4)
+                    overlay.tint("listening")
+                    overlay.say("Listening…")
+
+            overlay.tint("done" if acted else "nothing")
+            if not acted:
+                overlay.say("Nothing to do")
+            time.sleep(1.2)
+            overlay.hide()
+
+
+if "--no-overlay" in sys.argv:
+
+    class Quiet:
+        def __getattr__(self, _):
+            return lambda *a, **k: None
+
+    listen(Quiet())
+else:
+    from flow.overlay import run as run_overlay
+
+    run_overlay(listen)
