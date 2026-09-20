@@ -136,12 +136,21 @@ SYNONYMS = {
 STOPWORDS = {"the", "a", "an", "to", "in", "on", "my", "me", "please", "and", "of", "for", "it"}
 
 
+def _stem(word: str) -> str:
+    """Close enough for matching an app by name."""
+    return word[:-1] if len(word) > 4 and word.endswith("s") else word
+
+
 def _names(app: str, wanted: list[str]) -> bool:
     """Was this app named? Any distinctive word of it is enough.
 
-    Requiring the whole name meant "chrome" never matched "Google Chrome".
+    Requiring the whole name meant "chrome" never matched "Google Chrome", and
+    matching exactly meant "add a new note" never matched Notes, so it went to
+    whatever happened to be in front. A session of that landed in Terminal's
+    Shell menu.
     """
-    return any(w in wanted for w in _words(app) if len(w) >= 4)
+    asked = {_stem(w) for w in wanted}
+    return any(_stem(w) in asked for w in _words(app) if len(w) >= 4)
 
 
 def _words(text: str) -> list[str]:

@@ -172,9 +172,14 @@ def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
         # whole request, so "write pick up milk" arriving as its own clause saw
         # no text field at all.
         if wants_text(goal):
+            # Whatever can take text here, plus the things that belong to no
+            # window at all. Restricted to the front app, searching the web was
+            # filtered out for belonging to none, and lost to a Find menu item
+            # that focuses a box and types nothing into it.
             here = [
                 e for e in registry.entries
-                if e.needs_text and e.app == (registry_front or e.app)
+                if e.needs_text
+                and (e.app == (registry_front or e.app) or e.owner == "mac.web")
             ]
             if here and not any(e.needs_text for e in candidates):
                 candidates = (here + candidates)[: engine.max_options]
