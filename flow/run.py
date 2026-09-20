@@ -13,7 +13,7 @@ from typing import Callable
 from flow.decide import DECLINE, describe, state_for
 from flow.journal import journal
 from flow.registry import Entry, Registry, Reversibility, Tier
-from flow.text import clauses, spans, wants_text
+from flow.text import clauses, meaningful, spans, wants_text
 
 DONE = "done"
 MAX_STEPS = 6
@@ -136,10 +136,16 @@ def execute(
     # together, "open notes and write pick up milk" was declined outright
     # rather than answered with its first half.
     for clause in clauses(goal):
+        # "I want you to write pick up milk" splits into a run-up and a
+        # request. Acting on the run-up is impossible and abandoning the rest
+        # because of it meant the writing never happened.
+        if not meaningful(clause):
+            continue
         _carry_out(clause, goal, run, adapter, engine, registry,
                    commit=commit, ceiling=ceiling, trust=trust, confirm=confirm,
                    on_step=on_step, max_steps=max_steps)
-        if run.verdict in ("nothing matched", "failed", "stopped, not confirmed"):
+        # One clause matching nothing says nothing about the next one.
+        if run.verdict in ("failed", "stopped, not confirmed"):
             break
     if run.steps and run.verdict == "nothing matched":
         run.verdict = "finished, nothing further matched"
@@ -158,12 +164,15 @@ def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
             return
         candidates = registry.shortlist(goal, registry.entries, engine.max_options)
         candidates = [c for c in candidates if (c.verb, c.label, c.app) not in blocked]
-        # Once the request has got somewhere, a request that owes text should
-        # be looking at whatever can take it. Not before: forcing text fields
-        # up front made "open notes and write pick up milk" try to type into
-        # the window it started in.
-        if run.steps and run.owes_text(whole):
-            here = [e for e in registry.entries if e.needs_text and e.app == (registry_front or e.app)]
+        # A clause that asks for typing should see what can take it, whether
+        # or not anything has happened yet. The earlier version keyed off the
+        # whole request, so "write pick up milk" arriving as its own clause saw
+        # no text field at all.
+        if wants_text(goal):
+            here = [
+                e for e in registry.entries
+                if e.needs_text and e.app == (registry_front or e.app)
+            ]
             if here and not any(e.needs_text for e in candidates):
                 candidates = (here + candidates)[: engine.max_options]
         run.offered = [describe(e) for e in candidates]

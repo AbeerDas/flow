@@ -101,6 +101,32 @@ MIN_CANDIDATES = 5
 
 COMMAND_VERBS = {Verb.MENU, Verb.FOCUS_APP, Verb.LAUNCH_APP}
 
+# People ask for things by a different word than the menu uses. "Add another
+# note" lost File>New Note to "Undo Add Note", which matched two of the spoken
+# words against one, and the right answer never reached the model.
+SYNONYMS = {
+    "add": {"new", "create"},
+    "create": {"new", "add"},
+    "make": {"new", "create"},
+    "new": {"add", "create"},
+    "another": {"new"},
+    "search": {"find"},
+    "find": {"search"},
+    "look": {"find", "search"},
+    "delete": {"remove", "trash"},
+    "remove": {"delete", "trash"},
+    "quit": {"close", "exit"},
+    "shut": {"close", "quit"},
+    "type": {"write", "enter"},
+    "write": {"type", "enter"},
+    "enter": {"type", "write"},
+    "go": {"open", "switch"},
+    "switch": {"open", "go"},
+    "bring": {"switch", "open"},
+    "tab": {"window"},
+    "undo": {"revert"},
+}
+
 STOPWORDS = {"the", "a", "an", "to", "in", "on", "my", "me", "please", "and", "of", "for", "it"}
 
 
@@ -195,7 +221,7 @@ class Registry:
         def score(entry: Entry) -> tuple:  # noqa: C901
             app = set(_words(entry.app))
             text = set(_words(entry.label)) | app
-            covered = sum(1 for w in wanted if w in text)
+            covered = sum(1 for w in wanted if w in text or (SYNONYMS.get(w, set()) & text))
             # Naming an app is a much stronger signal than sharing a word with
             # a control. "Open a new tab in chrome" matched a button called
             # "Open in new window" on two words and lost Chrome, which it had

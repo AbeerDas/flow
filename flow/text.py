@@ -94,3 +94,18 @@ def clauses(goal: str) -> list[str]:
     if payload.strip():
         parts.append(payload.strip(" ,."))
     return parts or [goal]
+
+
+# Words that carry no instruction on their own. A clause made only of these is
+# a run-up to the real request, not a request.
+FILLER = {
+    "i", "want", "you", "to", "can", "could", "please", "now", "just", "then",
+    "also", "would", "like", "me", "my", "it", "that", "this", "ok", "okay",
+    "so", "well", "um", "uh", "and", "a", "an", "the", "do", "let", "us",
+}
+
+
+def meaningful(clause: str) -> bool:
+    """Is there anything here to act on?"""
+    words = [w for w in "".join(c.lower() if c.isalnum() else " " for c in clause).split()]
+    return any(w not in FILLER for w in words)
