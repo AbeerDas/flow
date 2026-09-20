@@ -75,8 +75,23 @@ step, the model took it for nearly every request.
 Those 20 goals were also what this was tuned against, so treat the score as a
 working floor rather than a measurement of the general case.
 
-Not built yet. Speech, speculation on partial sentences, the overlay, undo, and
-the browser, work tools and Claude Code adapters.
+Voice works end to end. Hold Right Option, speak, let go.
+
+| Step | Time |
+| --- | --- |
+| Speech to words | around 1.6 s |
+| Reading the machine | 240 ms |
+| Deciding | 34 ms |
+
+Speech is now the whole budget, which is the opposite of what was expected.
+The decision was supposed to be the slow part and it is 2% of it.
+
+Not built yet. Speculation on partial sentences, the overlay, undo, and the
+browser, work tools and Claude Code adapters.
+
+Three macOS permissions gate this and each refuses in silence. Accessibility to
+read windows, Input Monitoring for the key, and Microphone for the audio.
+`--key-test` and `--mic-test` check the last two on their own.
 
 ## Running it
 
