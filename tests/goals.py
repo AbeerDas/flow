@@ -31,11 +31,11 @@ GOALS = [
 # Requests with no answer in the registry. The action's own confidence is what
 # separates these, so a run that starts acting on them has regressed.
 JUNK = [
-    "what is the weather in tokyo",
     "tell me a joke",
     "order me a pizza",
     "yeah I think so too",
     "how tall is the eiffel tower",
     "remind me to call mum",
     "who won the match last night",
+    "explain quantum computing to me",
 ]

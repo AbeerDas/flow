@@ -8,6 +8,7 @@ for the app that is active.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -49,6 +50,19 @@ NOISE = {
 
 DEEP_LIMIT = 250
 
+# Where a Mac keeps its applications. An app that is not running is not in the
+# accessibility tree at all, so without this "open Notes" has no answer on a
+# machine where Notes happens to be closed.
+LAUNCHER = "mac.launch"
+
+APP_FOLDERS = (
+    Path("/Applications"),
+    Path("/Applications/Utilities"),
+    Path("/System/Applications"),
+    Path("/System/Applications/Utilities"),
+    Path.home() / "Applications",
+)
+
 
 class MacAdapter:
     """One bridge process, every app."""
@@ -59,6 +73,7 @@ class MacAdapter:
         self.bridge = Bridge()
         self.deep_limit = deep_limit
         self._pages: dict[str, dict] = {}
+        self._installed: list[str] | None = None
         status = self.bridge.call("status")
         if not status["accessibility"]:
             self.close()
@@ -69,6 +84,16 @@ class MacAdapter:
 
     def apps(self) -> list[dict]:
         return self.bridge.call("apps")["apps"]
+
+    def installed(self) -> list[str]:
+        """Every app on the machine, running or not."""
+        if self._installed is None:
+            names = set()
+            for folder in APP_FOLDERS:
+                if folder.is_dir():
+                    names.update(p.stem for p in folder.glob("*.app"))
+            self._installed = sorted(names)
+        return self._installed
 
     def targets(self) -> list[str]:
         return [a["name"] for a in self.apps()]
@@ -83,6 +108,26 @@ class MacAdapter:
         if tier is Tier.SHALLOW:
             return self._shallow(target)
         return self._deep(target)
+
+    def launchable(self) -> list[Entry]:
+        """Apps that are installed and not running. Starting one is free."""
+        running = {a["name"] for a in self.apps()}
+        now = time.time()
+        return [
+            Entry(
+                index=-1,
+                verb=Verb.LAUNCH_APP,
+                label=f"Open {name}",
+                app=name,
+                owner=LAUNCHER,
+                reversibility=reversibility_of(Verb.LAUNCH_APP, name),
+                observed_at=now,
+                tier=Tier.SHALLOW,
+                handle={"kind": "launch", "app": name},
+            )
+            for name in self.installed()
+            if name not in running
+        ]
 
     def scan_all(self, frontmost: str | None = None) -> list[Entry]:
         """Deep for the app in front, shallow for everything else."""
@@ -200,6 +245,10 @@ class MacAdapter:
         handle = entry.handle or {}
         if handle.get("kind") == "activate":
             return self.bridge.call("activate", app=handle["app"])
+        if handle.get("kind") == "launch":
+            subprocess.run(["open", "-a", handle["app"]], check=True, capture_output=True)
+            time.sleep(1.2)  # the window has to exist before it can be read
+            return {"launched": handle["app"]}
         request = {k: v for k, v in handle.items() if k not in ("kind", "fingerprint")}
         if text is not None:
             request["text"] = text

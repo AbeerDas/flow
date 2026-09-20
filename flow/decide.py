@@ -153,6 +153,8 @@ def describe(entry: Entry) -> str:
         return f"the {item} command in the {menu} menu"
     if entry.verb is Verb.FOCUS_APP:
         return f"bring the {entry.app} app to the front"
+    if entry.verb is Verb.LAUNCH_APP:
+        return f"open the {entry.app} app, which is not running yet"
     label = entry.label.split(" (")[0]
     verb = entry.verb.value.lower().replace("_", " ")
     return f"{verb} the {label} control"

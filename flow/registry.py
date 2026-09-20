@@ -21,6 +21,7 @@ class Verb(str, Enum):
     SELECT = "SELECT"
     MENU = "MENU"
     FOCUS_APP = "FOCUS_APP"
+    LAUNCH_APP = "LAUNCH_APP"
     SCROLL_UP = "SCROLL_UP"
     SCROLL_DOWN = "SCROLL_DOWN"
     PRESS_RETURN = "PRESS_RETURN"
@@ -64,6 +65,7 @@ VERB_FLOOR: dict[Verb, Reversibility] = {
     Verb.SCROLL_DOWN: Reversibility.FREE,
     Verb.PRESS_ESCAPE: Reversibility.FREE,
     Verb.FOCUS_APP: Reversibility.FREE,
+    Verb.LAUNCH_APP: Reversibility.FREE,
     Verb.TYPE_TEXT: Reversibility.UNDOABLE,
     Verb.SELECT: Reversibility.UNDOABLE,
     Verb.PRESS_RETURN: Reversibility.UNDOABLE,
@@ -94,7 +96,17 @@ def reversibility_of(verb: Verb, app: str) -> Reversibility:
     return floor
 
 
+COMMAND_VERBS = {Verb.MENU, Verb.FOCUS_APP, Verb.LAUNCH_APP}
+
 STOPWORDS = {"the", "a", "an", "to", "in", "on", "my", "me", "please", "and", "of", "for", "it"}
+
+
+def _names(app: str, wanted: list[str]) -> bool:
+    """Was this app named? Any distinctive word of it is enough.
+
+    Requiring the whole name meant "chrome" never matched "Google Chrome".
+    """
+    return any(w in wanted for w in _words(app) if len(w) >= 4)
 
 
 def _words(text: str) -> list[str]:
@@ -129,6 +141,12 @@ class Registry:
     def replace(self, owner: str, app: str, entries: list[Entry]) -> None:
         """Swap one app's contribution without disturbing the others."""
         self.entries = [e for e in self.entries if not (e.owner == owner and e.app == app)]
+        self.entries.extend(entries)
+        self._reindex()
+
+    def replace_all(self, owner: str, entries: list[Entry]) -> None:
+        """Swap everything one source contributed, across every app it covers."""
+        self.entries = [e for e in self.entries if e.owner != owner]
         self.entries.extend(entries)
         self._reindex()
 
@@ -172,12 +190,40 @@ class Registry:
             return rows[:limit]
 
         def score(entry: Entry) -> tuple:
-            text = set(_words(entry.label)) | set(_words(entry.app))
+            app = set(_words(entry.app))
+            text = set(_words(entry.label)) | app
             covered = sum(1 for w in wanted if w in text)
-            return (covered / len(wanted), covered, -len(entry.label))
+            # Naming an app is a much stronger signal than sharing a word with
+            # a control. "Open a new tab in chrome" matched a button called
+            # "Open in new window" on two words and lost Chrome, which it had
+            # named outright.
+            # Any distinctive word of the name is enough. Requiring all of
+            # them meant "chrome" never matched "Google Chrome".
+            named = 1 if _names(entry.app, wanted) else 0
+            # A menu item or an app is a named command. A button carrying a
+            # pull request title is content that happens to be clickable, and
+            # a window full of it otherwise wins on sharing one common word.
+            command = 1 if entry.verb in COMMAND_VERBS else 0
+            return (named, covered / len(wanted), command, covered, -len(entry.label))
 
+        # Every installed app is launchable, which is 84 options that are only
+        # ever relevant when the app is named. Left in, nonsense requests found
+        # somewhere to land and declining fell from 7 of 7 to 5 of 7.
+        rows = [e for e in rows if e.verb is not Verb.LAUNCH_APP or _names(e.app, wanted)]
         ranked = sorted(rows, key=score, reverse=True)
-        return ranked[:limit]
+        # A window can offer the same control several times over, and three
+        # identical lines give one option three times the surface area without
+        # adding a choice.
+        seen: set[tuple] = set()
+        unique = []
+        for entry in ranked:
+            key = (entry.verb, entry.label, entry.app)
+            if key not in seen:
+                seen.add(key)
+                unique.append(entry)
+            if len(unique) == limit:
+                break
+        return unique
 
     def may_speculate(self, entry: Entry) -> bool:
         """Only the free class may run before the sentence is finished."""
