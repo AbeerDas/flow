@@ -116,17 +116,21 @@ def execute(
     run = Run(goal=goal)
 
     for _ in range(max_steps):
-        observe(adapter, registry)
+        registry_front = observe(adapter, registry)
         # Refusing to finish while text is owed only helps when something can
         # accept text. Where nothing can, say so rather than circling.
-        if run.owes_text(goal) and not any(e.needs_text for e in registry.entries):
+        if run.steps and run.owes_text(goal) and not any(e.needs_text for e in registry.entries):
             run.verdict = "nowhere to type, this window offers no text field"
             return run
         candidates = registry.shortlist(goal, registry.entries, engine.max_options)
-        # A request that owes text should be looking at the places that take it.
-        typeable = [e for e in registry.entries if e.needs_text]
-        if run.owes_text(goal) and typeable and not any(e.needs_text for e in candidates):
-            candidates = (typeable + candidates)[: engine.max_options]
+        # Once the request has got somewhere, a request that owes text should
+        # be looking at whatever can take it. Not before: forcing text fields
+        # up front made "open notes and write pick up milk" try to type into
+        # the window it started in.
+        if run.steps and run.owes_text(goal):
+            here = [e for e in registry.entries if e.needs_text and e.app == (registry_front or e.app)]
+            if here and not any(e.needs_text for e in candidates):
+                candidates = (here + candidates)[: engine.max_options]
         answer = engine.ask(state_for(goal), next_question(goal, run, candidates)).answers["action"]
 
         if answer.choice == DONE:
