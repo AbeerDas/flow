@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from flow.adapters.mac import MacAdapter
-from flow.decide import engine as make_engine, questions_for, state_for
+from flow.decide import DECLINE, engine as make_engine, questions_for, state_for
 from flow.registry import Registry, Reversibility, Tier
 
 args = [a for a in sys.argv[1:] if a != "--go"]
@@ -44,6 +44,7 @@ decision = engine.ask(state_for(goal), questions_for(goal, candidates))
 action = decision.answers["action"]
 addressed = decision.answers.get("addressed")
 chosen = next((e for e in candidates if str(e.index) == action.choice), None)
+declined = action.choice == DECLINE
 
 print(f'goal        "{goal}"')
 print(f"read        {read_ms:.0f} ms, {len(registry.entries)} entries across {len(registry.apps())} apps")
@@ -52,6 +53,8 @@ if len(candidates) < len(registry.entries):
 print(f"decided     {decision.latency_ms} ms on the {engine.profile} route")
 if addressed:
     print(f"a command   {addressed.probabilities.get('true', 0):.2f}")
+if declined:
+    sys.exit("nothing offered matches that. Nothing ran.")
 if chosen is None:
     sys.exit(f"chose {action.choice!r}, which is not on the list. Nothing ran.")
 print(f"chose       {chosen.verb.value} \"{chosen.label}\" in {chosen.app}")

@@ -42,7 +42,7 @@ frontmost = saved["frontmost"]
 shortlist_only = "--shortlist-only" in sys.argv
 
 if not shortlist_only:
-    from flow.decide import engine as make_engine, questions_for, state_for
+    from flow.decide import DECLINE, engine as make_engine, questions_for, state_for
 
     engine = make_engine()
     limit = engine.max_options
@@ -73,6 +73,9 @@ for goal, expected in GOALS:
     decision = engine.ask(state_for(goal), questions_for(goal, short))
     answer = decision.answers["action"]
     chosen = next((e for e in short if str(e.index) == answer.choice), None)
+    if answer.choice == DECLINE:
+        rows.append((goal, "declined", "nothing matched", answer.confidence))
+        continue
     right = chosen is not None and expected.lower() in chosen.label.lower()
     picked += right
     if answer.confidence >= THRESHOLD:
@@ -82,17 +85,16 @@ for goal, expected in GOALS:
 
 width = max(len(g) for g, *_ in rows)
 for goal, verdict, detail, confidence in rows:
-    mark = {"ok": "  ", "in": "  ", "absent": " -", "MISSED": " X", "wrong": " X"}[verdict]
+    mark = {"ok": "  ", "in": "  ", "absent": " -", "declined": " ?", "MISSED": " X", "wrong": " X"}[verdict]
     print(f"{mark} {goal:{width}}  {verdict:7} {confidence:.2f}  {detail}")
 
 if not shortlist_only:
-    worst = 0.0
+    declined = 0
     for goal in JUNK:
         short = registry.shortlist(goal, registry.entries, limit)
         answer = engine.ask(state_for(goal), questions_for(goal, short)).answers["action"]
-        worst = max(worst, answer.confidence)
-    verdict = "rejected" if worst < THRESHOLD else "ACTED ON, regression"
-    print(f"\nnonsense            {len(JUNK)} requests, highest {worst:.2f}, {verdict}")
+        declined += answer.choice == DECLINE
+    print(f"\nnonsense            {len(JUNK)} requests, {declined} declined outright")
 
 usable = [g for g, e in GOALS if any(e.lower() in x.label.lower() for x in registry.entries)]
 print(f"\ntestable            {len(usable)} of {len(GOALS)}")

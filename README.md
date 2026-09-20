@@ -54,17 +54,22 @@ Measured against a live 234 entry registry on an M4 Pro.
 | | Result |
 | --- | --- |
 | Right answer reached the shortlist | 20 of 20 |
-| Model then chose it | 20 of 20 |
-| Acts unsupervised above the threshold | 17, all correct, none wrong |
-| Nonsense requests rejected | 7 of 7, highest scored 0.09 |
+| Model then chose it | 19 of 20, the twentieth declined rather than guessed |
+| Acts unsupervised | 15, all correct, none wrong |
+| Nonsense requests declined | 7 of 7 |
 | Median decision | 34 ms |
 
-The list is held to eight options. Longer is both less accurate and, worse,
-uniformly confident: at twelve, nonsense scored the same 0.98 as real commands
-and nothing downstream could tell them apart.
+Two things carry that. The list is held to eight options, because longer is
+both less accurate and uniformly confident: at twelve, nonsense scored the same
+0.98 as real commands. And the options include one for declining, because
+without somewhere to put a request that matches nothing, everything resolves to
+the nearest control.
 
-Those 20 goals were also what the prompt was tuned against, so treat the score
-as a working floor rather than a measurement of the general case.
+Confidence is a second gate rather than the main one. It does not separate on
+its own, with nonsense reaching 0.14 and real commands going down to 0.08.
+
+Those 20 goals were also what this was tuned against, so treat the score as a
+working floor rather than a measurement of the general case.
 
 Not built yet. Speech, speculation on partial sentences, the overlay, undo, and
 the browser, work tools and Claude Code adapters.
