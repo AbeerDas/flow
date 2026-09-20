@@ -95,6 +95,7 @@ def observe(adapter, registry: Registry) -> str | None:
     journal.write(
         "observed",
         frontmost=front,
+        really_front=next((a["name"] for a in adapter.apps() if a.get("frontmost")), None),
         entries=len(registry.entries),
         by_app={a: sum(1 for e in registry.entries if e.app == a) for a in registry.apps()[:20]},
     )

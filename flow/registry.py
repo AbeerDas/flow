@@ -113,8 +113,10 @@ SYNONYMS = {
     "search": {"find"},
     "find": {"search"},
     "look": {"find", "search"},
-    "delete": {"remove", "trash"},
-    "remove": {"delete", "trash"},
+    # A tab or a window is closed, not deleted, but people say both.
+    "delete": {"remove", "trash", "close"},
+    "remove": {"delete", "trash", "close"},
+    "close": {"delete", "quit"},
     "quit": {"close", "exit"},
     "shut": {"close", "quit"},
     "type": {"write", "enter"},

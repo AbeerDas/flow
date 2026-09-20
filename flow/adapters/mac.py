@@ -74,6 +74,7 @@ class MacAdapter:
         self.deep_limit = deep_limit
         self._pages: dict[str, dict] = {}
         self._installed: list[str] | None = None
+        self._last_front: str | None = None
         status = self.bridge.call("status")
         if not status["accessibility"]:
             self.close()
@@ -99,10 +100,20 @@ class MacAdapter:
         return [a["name"] for a in self.apps()]
 
     def frontmost(self) -> str | None:
+        """Whatever is in front, or whatever was last.
+
+        Nothing reports as frontmost while focus sits on something the bridge
+        does not list, and the answer is momentarily nobody. Taken at face
+        value the registry collapses to the list of apps and every window on
+        the screen stops existing, which reads as the request matching
+        nothing. Remembering the last real answer costs one stale read and
+        saves the whole window.
+        """
         for app in self.apps():
             if app["frontmost"]:
+                self._last_front = app["name"]
                 return app["name"]
-        return None
+        return self._last_front
 
     def scan(self, target: str, tier: Tier = Tier.DEEP) -> list[Entry]:
         if tier is Tier.SHALLOW:
