@@ -20,6 +20,7 @@ from flow.notify import ask, banner, sound
 from flow.journal import journal
 from flow.registry import Registry, Reversibility
 from flow.run import execute
+from flow.text import unhomophone
 
 commit = "--go" in sys.argv
 # --trust lets undoable things through without asking; permanent still stops.
@@ -103,6 +104,10 @@ def listen(overlay):
                 said = ears.transcribe(audio)
                 if not said:
                     continue
+                heard = said
+                said = unhomophone(said)
+                if said != heard:
+                    journal.write("corrected", heard=heard, read_as=said)
                 journal.write("heard", said=said, samples=len(audio))
                 sound("heard")
                 overlay.say(said)

@@ -130,3 +130,31 @@ def meaningful(clause: str) -> bool:
     """Is there anything here to act on?"""
     words = [w for w in "".join(c.lower() if c.isalnum() else " " for c in clause).split()]
     return any(w not in FILLER for w in words)
+
+
+# Heard, not meant. Speech gives back the commoner spelling of a homophone, and
+# "right" opening a phrase is almost always "write": a recorded session has
+# "Right, pick up milk" and "Right, my name is John", the second of which went
+# to Move & Resize > Right and moved the window.
+#
+# Only at the start, and only with something after it. "Move it right" and
+# "the right one" are left alone.
+HOMOPHONES = {
+    "right": "write",
+    "rite": "write",
+    "knew": "new",
+    "cent": "send",
+    "sighed": "side",
+    "waite": "wait",
+}
+
+
+def unhomophone(said: str) -> str:
+    words = said.split()
+    if len(words) < 2:
+        return said
+    head = words[0].strip(",.").lower()
+    if head in HOMOPHONES:
+        words[0] = HOMOPHONES[head]
+        return " ".join(words)
+    return said
