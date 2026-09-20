@@ -9,11 +9,19 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 pidfile="$root/.flow.pid"
 logfile="$root/.flow.log"
 
-running() { [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; }
+# A pid alone is not proof. A crashed run leaves its file behind, and the
+# number can belong to something else entirely by the time it is read.
+running() {
+  [[ -f "$pidfile" ]] || return 1
+  local pid; pid="$(cat "$pidfile")"
+  [[ -n "$pid" ]] || return 1
+  ps -o command= -p "$pid" 2>/dev/null | grep -q "talk.py"
+}
 
 case "${1:-start}" in
   start)
     if running; then echo "already listening, pid $(cat "$pidfile")"; exit 0; fi
+    rm -f "$pidfile"
     shift || true
     nohup "$root/.venv/bin/python" "$root/scripts/talk.py" "$@" >"$logfile" 2>&1 &
     echo $! > "$pidfile"
