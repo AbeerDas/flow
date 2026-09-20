@@ -27,16 +27,29 @@ class Ears:
         self.model = from_pretrained(model_id)
 
     def transcribe(self, audio) -> str:
+        """Samples in, words out.
+
+        Straight through the spectrogram rather than the streaming interface,
+        which returned an empty string for perfectly audible speech.
+        """
         import mlx.core as mx
+        import numpy as np
+        from parakeet_mlx.audio import get_logmel
 
         # Below about a fifth of a second there are not enough samples to fill
         # one analysis window, and the failure is a negative dimension deep in
         # the transform rather than anything that names the cause.
         if len(audio) < MIN_SAMPLES:
             return ""
-        with self.model.transcribe_stream(context_size=(256, 256)) as stream:
-            stream.add_audio(mx.array(audio))
-            return (stream.result.text or "").strip()
+        audio = np.asarray(audio, dtype="float32")
+        # A laptop microphone at arm's length peaks around a tenth of full
+        # scale, which is quiet enough to transcribe as nothing.
+        peak = float(np.abs(audio).max())
+        if 0.0 < peak < 0.5:
+            audio = audio * (0.9 / peak)
+        mel = get_logmel(mx.array(audio), self.model.preprocessor_config)
+        results = self.model.generate(mel)
+        return (results[0].text or "").strip() if results else ""
 
     def record_while(self, held: threading.Event, max_seconds: float = 20.0) -> object:
         """Everything spoken between the key going down and coming up.

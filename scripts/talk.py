@@ -30,7 +30,8 @@ if "--mic-test" in sys.argv:
     print(f"captured {len(clip)} samples, peak level {level:.3f}")
     if level < 0.01:
         sys.exit("that is silence. Check the input device and microphone permission.")
-    print(f'heard "{ears.transcribe(clip)}"')
+    heard = ears.transcribe(clip)
+    print(f'heard "{heard}"' if heard else "heard nothing. Speak closer, or louder.")
     sys.exit(0)
 
 if "--key-test" in sys.argv:
