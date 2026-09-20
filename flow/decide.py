@@ -153,6 +153,10 @@ def describe(entry: Entry) -> str:
         return f"the {item} command in the {menu} menu"
     if entry.verb is Verb.FOCUS_APP:
         return f"bring the {entry.app} app to the front"
+    if entry.verb is Verb.SEARCH_WEB:
+        return "search the web for something and show the results"
+    if entry.verb is Verb.OPEN_URL:
+        return "open a web address in the browser"
     if entry.verb is Verb.LAUNCH_APP:
         return f"open the {entry.app} app, which is not running yet"
     label = entry.label.split(" (")[0]

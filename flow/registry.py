@@ -22,6 +22,8 @@ class Verb(str, Enum):
     MENU = "MENU"
     FOCUS_APP = "FOCUS_APP"
     LAUNCH_APP = "LAUNCH_APP"
+    SEARCH_WEB = "SEARCH_WEB"
+    OPEN_URL = "OPEN_URL"
     SCROLL_UP = "SCROLL_UP"
     SCROLL_DOWN = "SCROLL_DOWN"
     PRESS_RETURN = "PRESS_RETURN"
@@ -66,6 +68,8 @@ VERB_FLOOR: dict[Verb, Reversibility] = {
     Verb.PRESS_ESCAPE: Reversibility.FREE,
     Verb.FOCUS_APP: Reversibility.FREE,
     Verb.LAUNCH_APP: Reversibility.FREE,
+    Verb.SEARCH_WEB: Reversibility.FREE,
+    Verb.OPEN_URL: Reversibility.FREE,
     Verb.TYPE_TEXT: Reversibility.UNDOABLE,
     Verb.SELECT: Reversibility.UNDOABLE,
     Verb.PRESS_RETURN: Reversibility.UNDOABLE,
@@ -99,7 +103,7 @@ def reversibility_of(verb: Verb, app: str) -> Reversibility:
 # Below this the model starts declining instead of choosing.
 MIN_CANDIDATES = 5
 
-COMMAND_VERBS = {Verb.MENU, Verb.FOCUS_APP, Verb.LAUNCH_APP}
+COMMAND_VERBS = {Verb.MENU, Verb.FOCUS_APP, Verb.LAUNCH_APP, Verb.SEARCH_WEB, Verb.OPEN_URL}
 
 # People ask for things by a different word than the menu uses. "Add another
 # note" lost File>New Note to "Undo Add Note", which matched two of the spoken

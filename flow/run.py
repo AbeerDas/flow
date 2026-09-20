@@ -99,6 +99,8 @@ def observe(adapter, registry: Registry) -> str | None:
         entries=len(registry.entries),
         by_app={a: sum(1 for e in registry.entries if e.app == a) for a in registry.apps()[:20]},
     )
+    if hasattr(adapter, "web"):
+        registry.replace_all("mac.web", adapter.web())
     if hasattr(adapter, "launchable"):
         # An app that is not running is not in the accessibility tree, so
         # without these "open Notes" has no answer whenever Notes is closed.

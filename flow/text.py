@@ -12,6 +12,11 @@ import re
 
 # What usually stands between the instruction and the words meant for the app.
 MARKERS = (
+    "search for",
+    "search",
+    "look up",
+    "google",
+    "go to",
     "saying",
     "that says",
     "which says",
@@ -27,6 +32,21 @@ MARKERS = (
 QUOTED = re.compile(r"[\"'“‘]([^\"'”’]{2,})[\"'”’]")
 
 
+# Where the words are meant to go is not part of the words. "Write pick up
+# milk in the notes app" typed the location into the note along with the list.
+TRAILING = re.compile(
+    r"\s+(?:in|on|into|to|inside)\s+(?:the\s+)?[\w .-]{1,30}?"
+    r"(?:\s+app|\s+window|\s+tab)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def trim(text: str) -> str:
+    """Drop a trailing "in the notes app" and the like."""
+    trimmed = TRAILING.sub("", text).strip(" ,.")
+    return trimmed or text.strip(" ,.")
+
+
 def spans(goal: str) -> list[str]:
     """Candidate strings to type, best first, never more than a handful."""
     found: list[str] = []
@@ -40,6 +60,7 @@ def spans(goal: str) -> list[str]:
         if match:
             tail = goal[match.end() :].strip(" ,:")
             if tail:
+                found.append(trim(tail))
                 found.append(tail)
 
     found.append(goal)

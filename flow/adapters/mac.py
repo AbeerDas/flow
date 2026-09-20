@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import urllib.parse
 import time
 from pathlib import Path
 
@@ -54,6 +55,7 @@ DEEP_LIMIT = 250
 # accessibility tree at all, so without this "open Notes" has no answer on a
 # machine where Notes happens to be closed.
 LAUNCHER = "mac.launch"
+WEB = "mac.web"
 
 APP_FOLDERS = (
     Path("/Applications"),
@@ -138,6 +140,34 @@ class MacAdapter:
             )
             for name in self.installed()
             if name not in running
+        ]
+
+    def web(self) -> list[Entry]:
+        """Searching and opening an address, without touching a browser window.
+
+        Chrome publishes no editable field for its address bar, so typing into
+        it is not possible through the accessibility tree. Both of these are
+        real actions rather than a sequence of pokes at one, and they work
+        whatever browser is default.
+        """
+        now = time.time()
+        return [
+            Entry(
+                index=-1,
+                verb=verb,
+                label=label,
+                app="Web",
+                owner=WEB,
+                reversibility=reversibility_of(verb, "Web"),
+                observed_at=now,
+                tier=Tier.SHALLOW,
+                needs_text=True,
+                handle={"kind": kind},
+            )
+            for verb, label, kind in (
+                (Verb.SEARCH_WEB, "Search the web", "search"),
+                (Verb.OPEN_URL, "Open a web address", "url"),
+            )
         ]
 
     def scan_all(self, frontmost: str | None = None) -> list[Entry]:
@@ -258,6 +288,16 @@ class MacAdapter:
             result = self.bridge.call("activate", app=handle["app"])
             self.await_front(handle["app"])
             return result
+        if handle.get("kind") == "search":
+            query = urllib.parse.quote_plus((text or "").strip())
+            subprocess.run(["open", f"https://www.google.com/search?q={query}"], check=True)
+            return {"searched": text}
+        if handle.get("kind") == "url":
+            address = (text or "").strip().replace(" dot ", ".").replace(" ", "")
+            if not address.startswith(("http://", "https://")):
+                address = "https://" + address
+            subprocess.run(["open", address], check=True)
+            return {"opened": address}
         if handle.get("kind") == "launch":
             subprocess.run(["open", "-a", handle["app"]], check=True, capture_output=True)
             self.await_front(handle["app"], timeout=6.0)
