@@ -161,6 +161,14 @@ def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
             run.verdict = f"chose {answer.choice!r}, which was not offered"
             return
 
+        # Asked to open Notes it opened Notes, looked again, and opened it
+        # again. Repeating the step just taken is never the next step.
+        if run.steps and run.steps[-1].entry is not None:
+            last = run.steps[-1].entry
+            if (last.verb, last.label, last.app) == (entry.verb, entry.label, entry.app):
+                run.verdict = "finished"
+                return
+
         text = None
         if entry.needs_text:
             # From this clause, not the whole request. Offered the whole one,
