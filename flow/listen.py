@@ -25,6 +25,9 @@ class Ears:
         from parakeet_mlx import from_pretrained
 
         self.model = from_pretrained(model_id)
+        self._stream = None
+        self._frames: list = []
+        self._keeping = False
 
     def transcribe(self, audio) -> str:
         """Samples in, words out.
@@ -51,31 +54,53 @@ class Ears:
         results = self.model.generate(mel)
         return (results[0].text or "").strip() if results else ""
 
-    def record_while(self, held: threading.Event, max_seconds: float = 20.0) -> object:
+    def open_microphone(self) -> None:
+        """Open the input once and leave it open.
+
+        Opening and closing around every press blocked on the teardown with
+        the process alive and idle, needing a kill. One stream, started at
+        launch, has no teardown to block on.
+
+        The handle stays open while the program runs. Audio is only kept while
+        the key is held and is dropped otherwise, so nothing is recorded
+        between presses.
+        """
+        import sounddevice as sd
+
+        if self._stream is not None:
+            return
+        self._stream = sd.InputStream(
+            samplerate=SAMPLE_RATE,
+            channels=1,
+            dtype="float32",
+            callback=self._collect,
+        )
+        self._stream.start()
+
+    def _collect(self, data, *_):
+        if self._keeping:
+            self._frames.append(data.copy())
+
+    def record_while(self, held: threading.Event, max_seconds: float = 20.0):
         """Everything spoken between the key going down and coming up.
 
         A short tail runs past the release, because the last word is usually
         still being said as the key comes up.
         """
         import numpy as np
-        import sounddevice as sd
 
-        frames: list = []
-        stream = sd.InputStream(
-            samplerate=SAMPLE_RATE,
-            channels=1,
-            dtype="float32",
-            callback=lambda data, *_: frames.append(data.copy()),
-        )
-        stream.start()
+        self.open_microphone()
+        self._frames.clear()
+        self._keeping = True
         try:
             deadline = time.time() + max_seconds
             while held.is_set() and time.time() < deadline:
                 time.sleep(0.01)
             time.sleep(TAIL_SECONDS)
         finally:
-            stream.stop()
-            stream.close()
+            self._keeping = False
+        frames = list(self._frames)
+        self._frames.clear()
         if not frames:
             return np.zeros(0, dtype="float32")
         return np.concatenate(frames)[:, 0]

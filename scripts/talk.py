@@ -56,6 +56,7 @@ ears = Ears()
 adapter = MacAdapter()
 engine = make_engine()
 registry = Registry()
+ears.open_microphone()  # fail here, at launch, rather than mid-press
 print(f"ready. hold Right Option and speak. ctrl-c to stop. {'acting' if commit else 'dry run'}.\n")
 banner("Flow is listening", "Hold Right Option anywhere and speak.")
 sound("done")
