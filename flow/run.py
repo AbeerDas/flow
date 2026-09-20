@@ -166,8 +166,15 @@ def _carry_out(goal, whole, run, adapter, engine, registry, *, commit, ceiling,
             # From this clause, not the whole request. Offered the whole one,
             # it typed "open notes and write pick up milk" into the note.
             options = spans(goal)
-            pick = engine.ask(state_for(goal), text_question(goal, options)).answers["text"]
-            text = options[int(pick.choice)] if pick.choice.isdigit() else options[0]
+            # Code's ordering is already the answer where there is one obvious
+            # span. Asked to choose between "pick up milk" and "write pick up
+            # milk" the model took the second. It is only worth asking when
+            # several spans are genuinely competing.
+            if len(options) > 2:
+                pick = engine.ask(state_for(goal), text_question(goal, options)).answers["text"]
+                text = options[int(pick.choice)] if pick.choice.isdigit() else options[0]
+            else:
+                text = options[0]
 
         step = Step(entry=entry, confidence=answer.confidence, text=text)
         if on_step:
