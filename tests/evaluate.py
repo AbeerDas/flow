@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from flow.registry import Entry, Registry, Reversibility, Tier, Verb
-from tests.goals import GOALS
+from tests.goals import GOALS, JUNK
 
 FIXTURE = ROOT / "tests" / "fixtures" / "registry.json"
 if not FIXTURE.exists():
@@ -54,7 +54,7 @@ print(f"{len(registry.entries)} entries, frontmost {frontmost}, shortlist of {li
 
 in_list = picked = 0
 confident_right = confident_wrong = 0
-THRESHOLD = 0.8
+THRESHOLD = getattr(engine, 'threshold', 0.8) if engine else 0.8
 rows = []
 
 for goal, expected in GOALS:
@@ -70,10 +70,7 @@ for goal, expected in GOALS:
         rows.append((goal, "in" if hit else "MISSED", f"rank {rank}" if hit else "", 0.0))
         continue
 
-    qs = questions_for(goal, short)
-    if "--action-only" in sys.argv:
-        qs = {"action": qs["action"]}
-    decision = engine.ask(state_for(goal), qs)
+    decision = engine.ask(state_for(goal), questions_for(goal, short))
     answer = decision.answers["action"]
     chosen = next((e for e in short if str(e.index) == answer.choice), None)
     right = chosen is not None and expected.lower() in chosen.label.lower()
@@ -87,6 +84,15 @@ width = max(len(g) for g, *_ in rows)
 for goal, verdict, detail, confidence in rows:
     mark = {"ok": "  ", "in": "  ", "absent": " -", "MISSED": " X", "wrong": " X"}[verdict]
     print(f"{mark} {goal:{width}}  {verdict:7} {confidence:.2f}  {detail}")
+
+if not shortlist_only:
+    worst = 0.0
+    for goal in JUNK:
+        short = registry.shortlist(goal, registry.entries, limit)
+        answer = engine.ask(state_for(goal), questions_for(goal, short)).answers["action"]
+        worst = max(worst, answer.confidence)
+    verdict = "rejected" if worst < THRESHOLD else "ACTED ON, regression"
+    print(f"\nnonsense            {len(JUNK)} requests, highest {worst:.2f}, {verdict}")
 
 usable = [g for g, e in GOALS if any(e.lower() in x.label.lower() for x in registry.entries)]
 print(f"\ntestable            {len(usable)} of {len(GOALS)}")

@@ -49,14 +49,19 @@ Working. The registry, the reversibility rules, the Mac adapter reading every
 running app, and a decision layer that runs on this machine with no account and
 no bill.
 
-Measured over 20 spoken-style goals against a saved registry, on an M4 Pro.
+Measured against a live 234 entry registry on an M4 Pro.
 
 | | Result |
 | --- | --- |
 | Right answer reached the shortlist | 20 of 20 |
 | Model then chose it | 20 of 20 |
-| Would act unsupervised above 80% confidence | 18, all correct |
+| Acts unsupervised above the threshold | 17, all correct, none wrong |
+| Nonsense requests rejected | 7 of 7, highest scored 0.09 |
 | Median decision | 34 ms |
+
+The list is held to eight options. Longer is both less accurate and, worse,
+uniformly confident: at twelve, nonsense scored the same 0.98 as real commands
+and nothing downstream could tell them apart.
 
 Those 20 goals were also what the prompt was tuned against, so treat the score
 as a working floor rather than a measurement of the general case.
